@@ -16,9 +16,10 @@ except ImportError as e:
     messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
 
-# 自定义厘米转 EMU 函数，不依赖 openpyxl 的 cm
-def cm_to_emu(cm_val):
-    return int(cm_val * 360000)
+# 替换原来的 cm_to_emu，改用像素转换
+def cm_to_px(cm_val):
+    """厘米转像素（基于 96 DPI，openpyxl 默认）"""
+    return int(cm_val * 37.795)
 
 CONFIG_FILE = "update_config.json"
 
@@ -315,7 +316,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（使用自定义 cm_to_emu） -----
+        # ----- 图片插入（使用像素设置尺寸） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -359,11 +360,11 @@ class App:
                     skipped_details.append(f"映射{i+1}: 模板中不存在工作表 '{tgt_sh}'")
                     continue
 
-                # 插入图片（使用自定义 cm_to_emu 转换）
+                # 插入图片（设置像素宽度/高度，openpyxl 自动转换为 EMU）
                 ws_tgt = wb[tgt_sh]
                 img = XLImage(img_path)
-                img.width = cm_to_emu(m["width_cm"])    # 自定义转换
-                img.height = cm_to_emu(m["height_cm"])  # 自定义转换
+                img.width = cm_to_px(m["width_cm"])   # 像素值
+                img.height = cm_to_px(m["height_cm"]) # 像素值
                 ws_tgt.add_image(img, tgt_cell)
                 inserted_count += 1
 
