@@ -10,25 +10,20 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor, TwoCellAnchor
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
     messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
 
-# 单位转换
+# ---------- 单位转换 ----------
 def cm_to_px(cm_val):
-    """厘米转像素（基于 96 DPI，openpyxl 默认）"""
+    """厘米转像素（openpyxl 按 96 DPI 处理宽高）"""
     return int(cm_val * 37.795)
 
-def px_to_emu(px):
-    """像素转 EMU (1 像素 = 12700 EMU)"""
-    return px * 12700
-
 def cm_to_emu(cm_val):
-    """厘米转 EMU"""
-    return px_to_emu(cm_to_px(cm_val))
+    """厘米转 EMU（精确公式，1 cm = 360000 EMU）"""
+    return int(cm_val * 360000)
 
 CONFIG_FILE = "update_config.json"
 
@@ -41,26 +36,27 @@ def load_config():
         return get_default_config()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    # 向后兼容旧格式（单一路径）
+    # 向后兼容旧格式
     if "data_source_path" in cfg and "data_sources" not in cfg:
         old_path = cfg.pop("data_source_path")
         cfg["data_sources"] = [{"alias": "默认数据源", "path": old_path}]
-        # 更新所有数据映射，添加 source_alias
         for m in cfg.get("data_mappings", []):
             if "source_alias" not in m:
                 m["source_alias"] = "默认数据源"
-    # 确保 image_mappings 有 position 字段
     for m in cfg.get("image_mappings", []):
         if "position" not in m:
             m["position"] = "top-left"
             m["offset_x_cm"] = 0
             m["offset_y_cm"] = 0
+    if "output_dir" not in cfg:
+        cfg["output_dir"] = ""
     return cfg
 
 def get_default_config():
     return {
         "data_sources": [],
         "template_path": "",
+        "output_dir": "",
         "output_suffix": "_已更新",
         "data_mappings": [],
         "image_mappings": []
@@ -70,8 +66,33 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("Excel报告一键更新器")
-        self.root.geometry("1000x780")
+        self.root.geometry("1050x800")
         self.config = load_config()
+        self.current_config_name = CONFIG_FILE
+
+        # ---------- 顶部状态栏 ----------
+        self.status_frame = ttk.Frame(root, relief=tk.RAISED, borderwidth=2)
+        self.status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+        self.status_var = tk.StringVar()
+        ttk.Label(self.status_frame, textvariable=self.status_var,
+                  background="#D9EAF7", font=("微软雅黑", 10, "bold")).pack(fill=tk.X, padx=10, pady=5)
+        self.update_status_bar()
+
+        # ---------- 模板与输出设置 ----------
+        frm_tpl = ttk.LabelFrame(root, text="模板与输出设置")
+        frm_tpl.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(frm_tpl, text="模板文件:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.tpl_path_var = tk.StringVar(value=self.config.get("template_path", ""))
+        ttk.Entry(frm_tpl, textvariable=self.tpl_path_var, width=70).grid(row=0, column=1, padx=5, pady=2)
+        ttk.Button(frm_tpl, text="浏览", command=self.browse_tpl).grid(row=0, column=2, padx=5)
+        ttk.Label(frm_tpl, text="输出文件夹:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", ""))
+        ttk.Entry(frm_tpl, textvariable=self.out_dir_var, width=70).grid(row=1, column=1, padx=5, pady=2)
+        ttk.Button(frm_tpl, text="浏览", command=self.browse_out_dir).grid(row=1, column=2, padx=5)
+        ttk.Label(frm_tpl, text="输出文件后缀:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        self.suffix_var = tk.StringVar(value=self.config.get("output_suffix", "_已更新"))
+        ttk.Entry(frm_tpl, textvariable=self.suffix_var, width=15).grid(row=2, column=1, sticky=tk.W, padx=5)
+        ttk.Label(frm_tpl, text="输出文件夹留空则保存到模板所在目录", foreground="gray").grid(row=3, column=1, sticky=tk.W, padx=5)
 
         # ---------- 数据源管理 ----------
         frm_ds = ttk.LabelFrame(root, text="数据源管理")
@@ -88,17 +109,6 @@ class App:
         ttk.Button(btn_frm_ds, text="编辑选中", command=self.edit_datasource).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_ds, text="删除选中", command=self.delete_datasource).pack(side=tk.LEFT, padx=5)
 
-        # ---------- 模板路径 ----------
-        frm_tpl = ttk.LabelFrame(root, text="模板路径")
-        frm_tpl.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(frm_tpl, text="模板文件:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
-        self.tpl_path_var = tk.StringVar(value=self.config.get("template_path", ""))
-        ttk.Entry(frm_tpl, textvariable=self.tpl_path_var, width=80).grid(row=0, column=1, padx=5, pady=2)
-        ttk.Button(frm_tpl, text="浏览", command=self.browse_tpl).grid(row=0, column=2, padx=5)
-        ttk.Label(frm_tpl, text="输出后缀:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
-        self.suffix_var = tk.StringVar(value=self.config.get("output_suffix", "_已更新"))
-        ttk.Entry(frm_tpl, textvariable=self.suffix_var, width=20).grid(row=1, column=1, sticky=tk.W, padx=5)
-
         # ---------- 映射管理 ----------
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -111,13 +121,14 @@ class App:
         self.data_tree.heading("source_cell", text="源单元格")
         self.data_tree.heading("target_cell", text="目标单元格")
         self.data_tree.column("source_alias", width=120)
-        self.data_tree.column("source_cell", width=200)
-        self.data_tree.column("target_cell", width=200)
+        self.data_tree.column("source_cell", width=220)
+        self.data_tree.column("target_cell", width=220)
         self.data_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         btn_frm_data = ttk.Frame(frm_data)
         btn_frm_data.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(btn_frm_data, text="添加", command=self.add_data_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_data, text="编辑选中", command=self.edit_data_mapping).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frm_data, text="复制选中", command=self.copy_data_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_data, text="删除选中", command=lambda: self.delete_selected(self.data_tree, "data")).pack(side=tk.LEFT, padx=5)
 
         # ---- 图片映射页 ----
@@ -141,6 +152,7 @@ class App:
         btn_frm_img.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(btn_frm_img, text="添加", command=self.add_image_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_img, text="编辑选中", command=self.edit_image_mapping).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frm_img, text="复制选中", command=self.copy_image_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_img, text="删除选中", command=lambda: self.delete_selected(self.img_tree, "image")).pack(side=tk.LEFT, padx=5)
 
         # ---------- 控制按钮 ----------
@@ -153,6 +165,24 @@ class App:
         self.refresh_datasource_tree()
         self.refresh_data_tree()
         self.refresh_image_tree()
+
+    # ---------- 状态栏 ----------
+    def update_status_bar(self):
+        tpl_name = os.path.basename(self.tpl_path_var.get()) or "未选择"
+        cfg_name = os.path.basename(self.current_config_name)
+        self.status_var.set(f"📄 当前模板：{tpl_name}    |    ⚙️ 配置文件：{cfg_name}")
+
+    # ---------- 浏览 ----------
+    def browse_tpl(self):
+        path = filedialog.askopenfilename(filetypes=[("Excel文件", "*.xlsx")])
+        if path:
+            self.tpl_path_var.set(path)
+            self.update_status_bar()
+
+    def browse_out_dir(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.out_dir_var.set(path)
 
     # ---------- 数据源管理 ----------
     def refresh_datasource_tree(self):
@@ -194,7 +224,6 @@ class App:
             if not alias or not path:
                 messagebox.showwarning("输入不完整", "别名和路径不能为空")
                 return
-            # 检查别名唯一性
             for i, ds in enumerate(self.config["data_sources"]):
                 if (edit_idx is None or i != edit_idx) and ds["alias"] == alias:
                     messagebox.showwarning("别名重复", "已存在相同别名的数据源")
@@ -203,7 +232,6 @@ class App:
             if edit_idx is not None:
                 old_alias = self.config["data_sources"][edit_idx]["alias"]
                 self.config["data_sources"][edit_idx] = new_ds
-                # 更新所有映射中引用的别名
                 for m in self.config.get("data_mappings", []):
                     if m.get("source_alias") == old_alias:
                         m["source_alias"] = alias
@@ -219,19 +247,11 @@ class App:
             return
         idx = self.ds_tree.index(selected[0])
         alias = self.config["data_sources"][idx]["alias"]
-        # 检查是否有映射引用
         refs = [m for m in self.config.get("data_mappings", []) if m.get("source_alias") == alias]
-        if refs:
-            if not messagebox.askyesno("确认删除", f"数据源 '{alias}' 被 {len(refs)} 条映射引用，删除后这些映射将失效。继续？"):
-                return
+        if refs and not messagebox.askyesno("确认删除", f"数据源 '{alias}' 被 {len(refs)} 条映射引用，继续？"):
+            return
         del self.config["data_sources"][idx]
         self.refresh_datasource_tree()
-
-    # ---------- 模板路径浏览 ----------
-    def browse_tpl(self):
-        path = filedialog.askopenfilename(filetypes=[("Excel文件", "*.xlsx")])
-        if path:
-            self.tpl_path_var.set(path)
 
     # ---------- 数据映射操作 ----------
     def refresh_data_tree(self):
@@ -240,8 +260,8 @@ class App:
         for m in self.config.get("data_mappings", []):
             self.data_tree.insert("", tk.END, values=(m.get("source_alias", ""), m["source_cell"], m["target_cell"]))
 
-    def add_data_mapping(self):
-        self._data_dialog(None)
+    def add_data_mapping(self, prefill=None):
+        self._data_dialog(None, prefill)
 
     def edit_data_mapping(self):
         selected = self.data_tree.selection()
@@ -252,9 +272,18 @@ class App:
         item = self.config["data_mappings"][idx]
         self._data_dialog(idx, item)
 
+    def copy_data_mapping(self):
+        selected = self.data_tree.selection()
+        if not selected:
+            messagebox.showinfo("提示", "请先选择一条要复制的映射")
+            return
+        idx = self.data_tree.index(selected[0])
+        item = self.config["data_mappings"][idx].copy()
+        self._data_dialog(None, item)
+
     def _data_dialog(self, edit_idx, item=None):
         popup = tk.Toplevel(self.root)
-        popup.title("编辑数据映射" if item else "添加数据映射")
+        popup.title("编辑数据映射" if edit_idx is not None else "添加数据映射")
         ttk.Label(popup, text="数据源:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
         alias_var = tk.StringVar()
         aliases = [ds["alias"] for ds in self.config.get("data_sources", [])]
@@ -264,14 +293,15 @@ class App:
             return
         combo = ttk.Combobox(popup, textvariable=alias_var, values=aliases, state="readonly", width=28)
         combo.grid(row=0, column=1, padx=5, pady=5)
-        ttk.Label(popup, text="源单元格 (如 Sheet1!B2):").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(popup, text="源单元格:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
         src_entry = ttk.Entry(popup, width=30)
         src_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Label(popup, text="目标单元格 (如 Sheet1!D5):").grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(popup, text="目标单元格:").grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
         tgt_entry = ttk.Entry(popup, width=30)
         tgt_entry.grid(row=2, column=1, padx=5, pady=5)
+
         if item:
-            alias_var.set(item.get("source_alias", ""))
+            alias_var.set(item.get("source_alias", aliases[0]))
             src_entry.insert(0, item["source_cell"])
             tgt_entry.insert(0, item["target_cell"])
         else:
@@ -308,8 +338,8 @@ class App:
                 pos_text
             ))
 
-    def add_image_mapping(self):
-        self._image_dialog(None)
+    def add_image_mapping(self, prefill=None):
+        self._image_dialog(None, prefill)
 
     def edit_image_mapping(self):
         selected = self.img_tree.selection()
@@ -320,9 +350,18 @@ class App:
         item = self.config["image_mappings"][idx]
         self._image_dialog(idx, item)
 
+    def copy_image_mapping(self):
+        selected = self.img_tree.selection()
+        if not selected:
+            messagebox.showinfo("提示", "请先选择一条要复制的映射")
+            return
+        idx = self.img_tree.index(selected[0])
+        item = self.config["image_mappings"][idx].copy()
+        self._image_dialog(None, item)
+
     def _image_dialog(self, edit_idx, item=None):
         popup = tk.Toplevel(self.root)
-        popup.title("编辑图片映射" if item else "添加图片映射")
+        popup.title("编辑图片映射" if edit_idx is not None else "添加图片映射")
         row_idx = 0
         ttk.Label(popup, text="图片编号:").grid(row=row_idx, column=0, padx=5, pady=5, sticky=tk.W)
         num_entry = ttk.Entry(popup, width=30)
@@ -354,7 +393,6 @@ class App:
         ttk.Radiobutton(pos_frame, text="默认（左上角）", variable=pos_var, value="top-left").pack(side=tk.LEFT)
         ttk.Radiobutton(pos_frame, text="自定义偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10)
         row_idx += 1
-        # 偏移值
         offset_frame = ttk.Frame(popup)
         offset_frame.grid(row=row_idx, column=1, columnspan=2, sticky=tk.W, pady=5)
         ttk.Label(offset_frame, text="X偏移(cm):").pack(side=tk.LEFT)
@@ -364,14 +402,19 @@ class App:
         y_entry = ttk.Entry(offset_frame, width=8)
         y_entry.pack(side=tk.LEFT, padx=5)
 
-        def toggle_offset():
+        def toggle_offset(*args):
             if pos_var.get() == "custom":
                 x_entry.config(state="normal")
                 y_entry.config(state="normal")
             else:
                 x_entry.config(state="disabled")
                 y_entry.config(state="disabled")
-        pos_var.trace("w", lambda *args: toggle_offset())
+                # 切换回默认时强制清零输入框
+                x_entry.delete(0, tk.END)
+                x_entry.insert(0, "0")
+                y_entry.delete(0, tk.END)
+                y_entry.insert(0, "0")
+        pos_var.trace("w", toggle_offset)
 
         if item:
             num_entry.insert(0, item["image_number"])
@@ -399,6 +442,7 @@ class App:
             except ValueError:
                 messagebox.showwarning("输入错误", "宽度和高度必须为数字")
                 return
+            # 根据位置决定偏移值
             if pos_var.get() == "custom":
                 try:
                     off_x = float(x_entry.get().strip())
@@ -452,7 +496,8 @@ class App:
         )
         if path:
             try:
-                save_config_to(self.config, path)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
                 messagebox.showinfo("导出成功", f"配置已保存到:\n{path}")
             except Exception as e:
                 messagebox.showerror("导出失败", str(e))
@@ -466,17 +511,19 @@ class App:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 new_cfg = json.load(f)
-            # 验证基础结构
             required_keys = ["data_sources", "template_path", "data_mappings", "image_mappings"]
             for k in required_keys:
                 if k not in new_cfg:
                     raise ValueError(f"配置文件缺少必要字段: {k}")
             self.config = new_cfg
-            self.refresh_datasource_tree()
+            self.current_config_name = path
             self.tpl_path_var.set(self.config.get("template_path", ""))
+            self.out_dir_var.set(self.config.get("output_dir", ""))
             self.suffix_var.set(self.config.get("output_suffix", "_已更新"))
+            self.refresh_datasource_tree()
             self.refresh_data_tree()
             self.refresh_image_tree()
+            self.update_status_bar()
             messagebox.showinfo("导入成功", "配置已导入并更新界面")
         except Exception as e:
             messagebox.showerror("导入失败", f"文件格式错误:\n{str(e)}")
@@ -484,10 +531,11 @@ class App:
     # ---------- 保存当前配置 ----------
     def save_current_config(self):
         self.config["template_path"] = self.tpl_path_var.get()
+        self.config["output_dir"] = self.out_dir_var.get()
         self.config["output_suffix"] = self.suffix_var.get()
         save_config(self.config)
 
-    # ---------- 核心执行 ----------
+    # ---------- 核心执行（修复偏移生效逻辑） ----------
     def run_update(self):
         self.save_current_config()
         cfg = self.config
@@ -495,7 +543,7 @@ class App:
         if not cfg.get("template_path") or not os.path.exists(cfg["template_path"]):
             messagebox.showerror("错误", "模板文件不存在")
             return
-        # 加载所有数据源
+
         data_wbs = {}
         for ds in cfg.get("data_sources", []):
             if not os.path.exists(ds["path"]):
@@ -544,41 +592,36 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（支持偏移） -----
+        # ----- 图片插入（仅当 position == "custom" 时应用偏移） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
             try:
                 number = m["image_number"]
                 folder = Path(m["image_folder"])
-
                 if not folder.exists() or not folder.is_dir():
                     skipped_details.append(f"映射{i+1}: 文件夹不存在或不是文件夹 {folder}")
                     continue
-
                 folder_files = {}
                 for f in folder.iterdir():
                     if f.is_file():
                         folder_files[f.name.lower()] = f.name
-
                 if not folder_files:
                     skipped_details.append(f"映射{i+1}: 文件夹为空 {folder}")
                     continue
-
                 img_path = None
                 for ext in [".jpg", ".jpeg", ".png", ".bmp", ".gif"]:
                     candidate = f"{number}{ext}".lower()
                     if candidate in folder_files:
                         img_path = str(folder / folder_files[candidate])
                         break
-
                 if not img_path:
                     file_list = "\n".join(sorted(folder_files.values())[:15])
                     skipped_details.append(f"映射{i+1}: 未找到编号 '{number}' 的图片\n文件夹内容(前15):\n{file_list}")
                     continue
 
                 if "!" not in m["target_cell"]:
-                    skipped_details.append(f"映射{i+1}: 目标单元格格式错误 (缺少'!')")
+                    skipped_details.append(f"映射{i+1}: 目标单元格格式错误")
                     continue
                 tgt_sh, tgt_cell = m["target_cell"].split("!", 1)
                 if tgt_sh not in wb.sheetnames:
@@ -591,17 +634,16 @@ class App:
                 img.height = cm_to_px(m["height_cm"])
                 ws_tgt.add_image(img, tgt_cell)
 
-                # 设置偏移
-                if m.get("position") == "custom" or m.get("position") == "top-left":
-                    offset_x = m.get("offset_x_cm", 0)
-                    offset_y = m.get("offset_y_cm", 0)
-                    if offset_x != 0 or offset_y != 0:
-                        # 获取 anchor 并修改偏移
-                        anchor = img.anchor
-                        if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
-                            from_marker = anchor._from
-                            from_marker.colOff = cm_to_emu(offset_x)
-                            from_marker.rowOff = cm_to_emu(offset_y)
+                # 只有明确设置为 "custom" 才应用偏移
+                if m.get("position") == "custom":
+                    off_x = m.get("offset_x_cm", 0)
+                    off_y = m.get("offset_y_cm", 0)
+                    # 修改锚点偏移，单位 EMU
+                    anchor = img.anchor
+                    from_marker = anchor._from
+                    from_marker.colOff = cm_to_emu(off_x)
+                    from_marker.rowOff = cm_to_emu(off_y)
+
                 inserted_count += 1
 
             except Exception as e:
@@ -614,10 +656,16 @@ class App:
 
         for w in data_wbs.values():
             w.close()
-        # 保存新文件
+
+        # 输出路径
         tpl_path = Path(cfg["template_path"])
         suffix = cfg.get("output_suffix", "_已更新")
-        out_path = tpl_path.parent / f"{tpl_path.stem}{suffix}.xlsx"
+        out_dir = cfg.get("output_dir", "")
+        if out_dir and os.path.isdir(out_dir):
+            out_path = Path(out_dir) / f"{tpl_path.stem}{suffix}.xlsx"
+        else:
+            out_path = tpl_path.parent / f"{tpl_path.stem}{suffix}.xlsx"
+
         try:
             wb.save(str(out_path))
         except Exception as e:
@@ -638,10 +686,6 @@ class App:
             os.startfile(out_path)
         except Exception:
             pass
-
-def save_config_to(config, path):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
 
 if __name__ == "__main__":
     root = tk.Tk()
