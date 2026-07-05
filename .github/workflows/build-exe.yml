@@ -22,7 +22,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --clean --name "Excel报告一键更新器" `
+          pyinstaller --onefile --windowed --clean --name "VSA_MBO_PBO一键生成器" `
             --collect-all openpyxl `
             --collect-all PIL `
             --collect-all et_xmlfile `
@@ -39,5 +39,5 @@ jobs:
       - name: Upload EXE as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Excel报告一键更新器-Windows
-          path: dist/Excel报告一键更新器.exe
+          name: VSA_MBO_PBO一键生成器-Windows
+          path: dist/VSA_MBO_PBO一键生成器.exe
