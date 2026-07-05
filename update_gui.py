@@ -10,7 +10,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor
+    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker
+    from openpyxl.utils import coordinate_to_tuple
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
@@ -71,7 +72,7 @@ class App:
         self.config = load_config()
         self.current_config_name = CONFIG_FILE
 
-        # ---------- 提前创建所有路径变量（避免后续状态栏调用时未定义） ----------
+        # ---------- 提前创建所有路径变量 ----------
         self.tpl_path_var = tk.StringVar(value=self.config.get("template_path", ""))
         self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", ""))
         self.suffix_var = tk.StringVar(value=self.config.get("output_suffix", "_已更新"))
@@ -593,7 +594,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（修正偏移） -----
+        # ----- 图片插入（支持偏移） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -635,12 +636,24 @@ class App:
                 img.height = cm_to_px(m["height_cm"])
                 ws_tgt.add_image(img, tgt_cell)
 
-                # 只有明确设置为 "custom" 才应用偏移
+                # 设置偏移
                 if m.get("position") == "custom":
                     off_x = m.get("offset_x_cm", 0)
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
-                    if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+
+                    if isinstance(anchor, str):
+                        # 锚点为字符串（如 "A1"），手动构造锚点对象
+                        col_letter, row_num = coordinate_to_tuple(anchor)
+                        marker = AnchorMarker(
+                            col=col_letter - 1,
+                            row=row_num - 1,
+                            colOff=cm_to_emu(off_x),
+                            rowOff=cm_to_emu(off_y)
+                        )
+                        new_anchor = OneCellAnchor(_from=marker, ext=None)
+                        img.anchor = new_anchor
+                    elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
                         from_marker = anchor._from
                         from_marker.colOff = cm_to_emu(off_x)
                         from_marker.rowOff = cm_to_emu(off_y)
