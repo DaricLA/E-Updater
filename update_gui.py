@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker
+    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker, Extent
     from openpyxl.utils import coordinate_to_tuple
 except ImportError as e:
     import traceback
@@ -594,7 +594,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（支持偏移） -----
+        # ----- 图片插入（支持偏移，修复尺寸丢失） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -642,8 +642,11 @@ class App:
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
 
+                    # 计算图片宽高 EMU（像素 * 12700）
+                    width_emu = img.width * 12700
+                    height_emu = img.height * 12700
+
                     if isinstance(anchor, str):
-                        # 锚点为字符串（如 "A1"），手动构造锚点对象
                         col_letter, row_num = coordinate_to_tuple(anchor)
                         marker = AnchorMarker(
                             col=col_letter - 1,
@@ -651,7 +654,8 @@ class App:
                             colOff=cm_to_emu(off_x),
                             rowOff=cm_to_emu(off_y)
                         )
-                        new_anchor = OneCellAnchor(_from=marker, ext=None)
+                        ext = Extent(cx=width_emu, cy=height_emu)
+                        new_anchor = OneCellAnchor(_from=marker, ext=ext)
                         img.anchor = new_anchor
                     elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
                         from_marker = anchor._from
