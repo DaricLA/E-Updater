@@ -1,1 +1,3 @@
 openpyxl
+Pillow
+et_xmlfile
