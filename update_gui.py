@@ -18,7 +18,7 @@ except ImportError as e:
     messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
 
-# 尝试导入 XDRPositiveSize2D（openpyxl 3.1+ 存在），若失败则回退
+# 尝试导入 XDRPositiveSize2D（openpyxl 3.1+ 存在）
 try:
     from openpyxl.drawing.xdr import XDRPositiveSize2D
     HAS_XDR = True
@@ -601,7 +601,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（最终稳定版偏移） -----
+        # ----- 图片插入（修正锚点坐标解析） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -655,11 +655,11 @@ class App:
                         from_marker.colOff = cm_to_emu(off_x)
                         from_marker.rowOff = cm_to_emu(off_y)
                     elif isinstance(anchor, str):
-                        # 字符串锚点：使用正确尺寸类构造新锚点（如果可用）
+                        # 字符串锚点：正确解析列索引
                         if HAS_XDR:
-                            col_letter, row_num = coordinate_to_tuple(anchor)
+                            col_idx, row_num = coordinate_to_tuple(anchor)  # col_idx 是 1 开始的整数
                             marker = AnchorMarker(
-                                col=col_letter - 1,
+                                col=col_idx - 1,   # 转为 0 基索引
                                 row=row_num - 1,
                                 colOff=cm_to_emu(off_x),
                                 rowOff=cm_to_emu(off_y)
