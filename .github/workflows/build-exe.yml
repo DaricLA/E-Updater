@@ -29,6 +29,9 @@ jobs:
             --hidden-import openpyxl `
             --hidden-import PIL `
             --hidden-import et_xmlfile `
+            --hidden-import xml.etree.ElementTree `
+            --hidden-import xml.parsers.expat `
+            --hidden-import collections.abc `
             update_gui.py
 
       - name: Upload EXE as artifact
