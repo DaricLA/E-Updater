@@ -594,7 +594,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（稳健偏移） -----
+        # ----- 图片插入（终极偏移修复：字符串锚点手动构造对象） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -636,19 +636,33 @@ class App:
                 img.height = cm_to_px(m["height_cm"])
                 ws_tgt.add_image(img, tgt_cell)
 
-                # 设置偏移（仅当锚点为对象时）
+                # 设置偏移
                 if m.get("position") == "custom":
                     off_x = m.get("offset_x_cm", 0)
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
 
-                    if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+                    if isinstance(anchor, str):
+                        # 字符串锚点 → 手动构造 OneCellAnchor（含简易尺寸对象）
+                        col_letter, row_num = coordinate_to_tuple(anchor)
+                        marker = AnchorMarker(
+                            col=col_letter - 1,
+                            row=row_num - 1,
+                            colOff=cm_to_emu(off_x),
+                            rowOff=cm_to_emu(off_y)
+                        )
+                        # 创建简单的尺寸对象（替代 Extent）
+                        class SimpleExtent:
+                            pass
+                        ext = SimpleExtent()
+                        ext.cx = img.width * 12700
+                        ext.cy = img.height * 12700
+                        new_anchor = OneCellAnchor(_from=marker, ext=ext)
+                        img.anchor = new_anchor
+                    elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
                         from_marker = anchor._from
                         from_marker.colOff = cm_to_emu(off_x)
                         from_marker.rowOff = cm_to_emu(off_y)
-                    elif isinstance(anchor, str):
-                        # 字符串锚点无法直接修改偏移，记录警告
-                        skipped_details.append(f"映射{i+1}: 自定义偏移未生效（锚点为字符串，请更新 openpyxl 或联系开发人员）")
                     else:
                         skipped_details.append(f"映射{i+1}: 无法设置偏移，未知锚点类型 {type(anchor).__name__}")
 
