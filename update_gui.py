@@ -10,7 +10,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker, Extent
+    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker
+    import openpyxl.drawing.spreadsheet_drawing as ssd   # 替代直接导入 Extent
     from openpyxl.utils import coordinate_to_tuple
 except ImportError as e:
     import traceback
@@ -594,7 +595,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（支持偏移，修复尺寸丢失） -----
+        # ----- 图片插入（修复偏移，使用 ssd.Extent） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -654,7 +655,7 @@ class App:
                             colOff=cm_to_emu(off_x),
                             rowOff=cm_to_emu(off_y)
                         )
-                        ext = Extent(cx=width_emu, cy=height_emu)
+                        ext = ssd.Extent(cx=width_emu, cy=height_emu)   # 使用 ssd.Extent
                         new_anchor = OneCellAnchor(_from=marker, ext=ext)
                         img.anchor = new_anchor
                     elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
