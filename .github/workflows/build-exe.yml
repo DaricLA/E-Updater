@@ -20,11 +20,6 @@ jobs:
           pip install --no-cache-dir -r requirements.txt
           pip install pyinstaller
 
-      - name: Verify openpyxl version
-        run: |
-          python -c "import openpyxl; print('openpyxl version:', openpyxl.__version__)"
-          python -c "from openpyxl.utils.units import cm; print('cm import OK')"
-
       - name: Build EXE
         run: |
           pyinstaller --onefile --windowed --clean --name "Excel报告一键更新器" `
@@ -34,7 +29,6 @@ jobs:
             --hidden-import openpyxl `
             --hidden-import PIL `
             --hidden-import et_xmlfile `
-            --hidden-import openpyxl.utils.units `
             --hidden-import openpyxl.drawing.image `
             --hidden-import xml.etree.ElementTree `
             --hidden-import xml.parsers.expat `
