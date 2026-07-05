@@ -11,7 +11,6 @@ try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
     from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor, AnchorMarker
-    import openpyxl.drawing.spreadsheet_drawing as ssd   # 替代直接导入 Extent
     from openpyxl.utils import coordinate_to_tuple
 except ImportError as e:
     import traceback
@@ -595,7 +594,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（修复偏移，使用 ssd.Extent） -----
+        # ----- 图片插入（稳健偏移） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -637,33 +636,21 @@ class App:
                 img.height = cm_to_px(m["height_cm"])
                 ws_tgt.add_image(img, tgt_cell)
 
-                # 设置偏移
+                # 设置偏移（仅当锚点为对象时）
                 if m.get("position") == "custom":
                     off_x = m.get("offset_x_cm", 0)
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
 
-                    # 计算图片宽高 EMU（像素 * 12700）
-                    width_emu = img.width * 12700
-                    height_emu = img.height * 12700
-
-                    if isinstance(anchor, str):
-                        col_letter, row_num = coordinate_to_tuple(anchor)
-                        marker = AnchorMarker(
-                            col=col_letter - 1,
-                            row=row_num - 1,
-                            colOff=cm_to_emu(off_x),
-                            rowOff=cm_to_emu(off_y)
-                        )
-                        ext = ssd.Extent(cx=width_emu, cy=height_emu)   # 使用 ssd.Extent
-                        new_anchor = OneCellAnchor(_from=marker, ext=ext)
-                        img.anchor = new_anchor
-                    elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+                    if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
                         from_marker = anchor._from
                         from_marker.colOff = cm_to_emu(off_x)
                         from_marker.rowOff = cm_to_emu(off_y)
+                    elif isinstance(anchor, str):
+                        # 字符串锚点无法直接修改偏移，记录警告
+                        skipped_details.append(f"映射{i+1}: 自定义偏移未生效（锚点为字符串，请更新 openpyxl 或联系开发人员）")
                     else:
-                        skipped_details.append(f"映射{i+1}: 无法设置偏移，锚点类型为 {type(anchor).__name__}")
+                        skipped_details.append(f"映射{i+1}: 无法设置偏移，未知锚点类型 {type(anchor).__name__}")
 
                 inserted_count += 1
 
