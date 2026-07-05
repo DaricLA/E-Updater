@@ -10,12 +10,15 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.utils.units import cm as cm_unit
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
     messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
+
+# 自定义厘米转 EMU 函数，不依赖 openpyxl 的 cm
+def cm_to_emu(cm_val):
+    return int(cm_val * 360000)
 
 CONFIG_FILE = "update_config.json"
 
@@ -312,7 +315,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（已修复尺寸） -----
+        # ----- 图片插入（使用自定义 cm_to_emu） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -356,11 +359,11 @@ class App:
                     skipped_details.append(f"映射{i+1}: 模板中不存在工作表 '{tgt_sh}'")
                     continue
 
-                # 插入图片（使用 cm_unit 转换尺寸）
+                # 插入图片（使用自定义 cm_to_emu 转换）
                 ws_tgt = wb[tgt_sh]
                 img = XLImage(img_path)
-                img.width = cm_unit(m["width_cm"])    # 厘米 → EMU
-                img.height = cm_unit(m["height_cm"])  # 厘米 → EMU
+                img.width = cm_to_emu(m["width_cm"])    # 自定义转换
+                img.height = cm_to_emu(m["height_cm"])  # 自定义转换
                 ws_tgt.add_image(img, tgt_cell)
                 inserted_count += 1
 
