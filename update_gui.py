@@ -10,9 +10,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.utils.units import cm as cm_unit   # ← 关键：厘米转EMU
-except ImportError:
-    messagebox.showerror("缺少库", "请先运行: pip install openpyxl")
+    from openpyxl.utils.units import cm as cm_unit   # 厘米转EMU
+except ImportError as e:
+    import traceback
+    err_msg = traceback.format_exc()
+    messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
 
 CONFIG_FILE = "update_config.json"
@@ -261,7 +263,7 @@ class App:
         self.config["output_suffix"] = self.suffix_var.get()
         save_config(self.config)
 
-    # ---------- 核心执行（修复图片尺寸） ----------
+    # ---------- 核心执行 ----------
     def run_update(self):
         self.save_current_config()
         cfg = self.config
@@ -332,7 +334,7 @@ class App:
                     skipped_details.append(f"映射{i+1}: 文件夹为空 {folder}")
                     continue
 
-                # 查找图片
+                # 查找图片（忽略扩展名大小写）
                 img_path = None
                 for ext in [".jpg", ".jpeg", ".png", ".bmp", ".gif"]:
                     candidate = f"{number}{ext}".lower()
@@ -357,8 +359,8 @@ class App:
                 # 插入图片（使用 cm_unit 转换尺寸）
                 ws_tgt = wb[tgt_sh]
                 img = XLImage(img_path)
-                img.width = cm_unit(m["width_cm"])    # 修复：厘米 → EMU
-                img.height = cm_unit(m["height_cm"])  # 修复：厘米 → EMU
+                img.width = cm_unit(m["width_cm"])    # 厘米 → EMU
+                img.height = cm_unit(m["height_cm"])  # 厘米 → EMU
                 ws_tgt.add_image(img, tgt_cell)
                 inserted_count += 1
 
