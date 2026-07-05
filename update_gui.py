@@ -18,6 +18,13 @@ except ImportError as e:
     messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
     sys.exit(1)
 
+# 尝试导入 XDRPositiveSize2D（openpyxl 3.1+ 存在），若失败则回退
+try:
+    from openpyxl.drawing.xdr import XDRPositiveSize2D
+    HAS_XDR = True
+except ImportError:
+    HAS_XDR = False
+
 # ---------- 单位转换 ----------
 def cm_to_px(cm_val):
     """厘米转像素（openpyxl 按 96 DPI 处理宽高）"""
@@ -594,7 +601,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（终极偏移修复：字符串锚点手动构造对象） -----
+        # ----- 图片插入（最终稳定版偏移） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -642,27 +649,26 @@ class App:
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
 
-                    if isinstance(anchor, str):
-                        # 字符串锚点 → 手动构造 OneCellAnchor（含简易尺寸对象）
-                        col_letter, row_num = coordinate_to_tuple(anchor)
-                        marker = AnchorMarker(
-                            col=col_letter - 1,
-                            row=row_num - 1,
-                            colOff=cm_to_emu(off_x),
-                            rowOff=cm_to_emu(off_y)
-                        )
-                        # 创建简单的尺寸对象（替代 Extent）
-                        class SimpleExtent:
-                            pass
-                        ext = SimpleExtent()
-                        ext.cx = img.width * 12700
-                        ext.cy = img.height * 12700
-                        new_anchor = OneCellAnchor(_from=marker, ext=ext)
-                        img.anchor = new_anchor
-                    elif isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+                    if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+                        # 对象锚点，直接修改偏移
                         from_marker = anchor._from
                         from_marker.colOff = cm_to_emu(off_x)
                         from_marker.rowOff = cm_to_emu(off_y)
+                    elif isinstance(anchor, str):
+                        # 字符串锚点：使用正确尺寸类构造新锚点（如果可用）
+                        if HAS_XDR:
+                            col_letter, row_num = coordinate_to_tuple(anchor)
+                            marker = AnchorMarker(
+                                col=col_letter - 1,
+                                row=row_num - 1,
+                                colOff=cm_to_emu(off_x),
+                                rowOff=cm_to_emu(off_y)
+                            )
+                            ext = XDRPositiveSize2D(cx=img.width * 12700, cy=img.height * 12700)
+                            new_anchor = OneCellAnchor(_from=marker, ext=ext)
+                            img.anchor = new_anchor
+                        else:
+                            skipped_details.append(f"映射{i+1}: 自定义偏移未生效（不支持字符串锚点，请更新openpyxl）")
                     else:
                         skipped_details.append(f"映射{i+1}: 无法设置偏移，未知锚点类型 {type(anchor).__name__}")
 
