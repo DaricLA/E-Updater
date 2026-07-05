@@ -20,14 +20,9 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Clean previous builds
-        run: |
-          if exist build rmdir /s /q build
-          if exist dist rmdir /s /q dist
-
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --name "Excel报告一键更新器" `
+          pyinstaller --onefile --windowed --clean --name "Excel报告一键更新器" `
             --collect-all openpyxl `
             --collect-all PIL `
             --collect-all et_xmlfile `
