@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
-    from openpyxl.utils.units import cm as cm_unit   # 厘米转EMU
+    from openpyxl.utils.units import cm as cm_unit
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
@@ -334,7 +334,7 @@ class App:
                     skipped_details.append(f"映射{i+1}: 文件夹为空 {folder}")
                     continue
 
-                # 查找图片（忽略扩展名大小写）
+                # 查找图片
                 img_path = None
                 for ext in [".jpg", ".jpeg", ".png", ".bmp", ".gif"]:
                     candidate = f"{number}{ext}".lower()
