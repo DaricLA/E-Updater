@@ -22,7 +22,12 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --name "Excel报告一键更新器" update_gui.py
+          pyinstaller --onefile --windowed --name "Excel报告一键更新器" `
+            --collect-all openpyxl `
+            --collect-all PIL `
+            --hidden-import openpyxl `
+            --hidden-import PIL `
+            update_gui.py
 
       - name: Upload EXE as artifact
         uses: actions/upload-artifact@v4
