@@ -10,6 +10,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 try:
     from openpyxl import load_workbook
     from openpyxl.drawing.image import Image as XLImage
+    from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
@@ -65,7 +66,7 @@ def get_default_config():
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Excel报告一键更新器")
+        self.root.title("VSA_MBO_PBO 一键生成器")
         self.root.geometry("1050x800")
         self.config = load_config()
         self.current_config_name = CONFIG_FILE
@@ -411,7 +412,6 @@ class App:
             else:
                 x_entry.config(state="disabled")
                 y_entry.config(state="disabled")
-                # 切换回默认时强制清零输入框
                 x_entry.delete(0, tk.END)
                 x_entry.insert(0, "0")
                 y_entry.delete(0, tk.END)
@@ -593,7 +593,7 @@ class App:
                     f"映射 {i+1}:\n源 {m['source_cell']} → 目标 {m['target_cell']}\n错误：{e}")
                 return
 
-        # ----- 图片插入（仅当 position == "custom" 时应用偏移） -----
+        # ----- 图片插入（修正偏移） -----
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -640,9 +640,12 @@ class App:
                     off_x = m.get("offset_x_cm", 0)
                     off_y = m.get("offset_y_cm", 0)
                     anchor = img.anchor
-                    from_marker = anchor._from
-                    from_marker.colOff = cm_to_emu(off_x)
-                    from_marker.rowOff = cm_to_emu(off_y)
+                    if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+                        from_marker = anchor._from
+                        from_marker.colOff = cm_to_emu(off_x)
+                        from_marker.rowOff = cm_to_emu(off_y)
+                    else:
+                        skipped_details.append(f"映射{i+1}: 无法设置偏移，锚点类型为 {type(anchor).__name__}")
 
                 inserted_count += 1
 
