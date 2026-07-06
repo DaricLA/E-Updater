@@ -15,7 +15,7 @@ try:
 except ImportError as e:
     import traceback
     err_msg = traceback.format_exc()
-    messagebox.showerror("库导入失败", f"缺失必要组件，请反馈以下信息:\n{err_msg}")
+    messagebox.showerror("匯入程式庫失敗", f"缺失必要組件，請回報以下資訊:\n{err_msg}")
     sys.exit(1)
 
 try:
@@ -24,7 +24,7 @@ try:
 except ImportError:
     HAS_XDR = False
 
-# ---------- 单位转换 ----------
+# ---------- 單位轉換 ----------
 def cm_to_px(cm_val):
     return int(cm_val * 37.795)
 
@@ -35,6 +35,93 @@ CONFIG_FILE = "update_config.json"
 
 def save_config(data):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        return get_default_config()
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    # 向後相容舊格式
+    if "data_source_path" in cfg and "data_sources" not in cfg:
+        old_path = cfg.pop("data_source_path")
+        cfg["data_sources"] = [{"alias": "預設資料來源", "path": old_path}]
+        for m in cfg.get("data_mappings", []):
+            if "source_alias" not in m:
+                m["source_alias"] = "預設資料來源"
+    for m in cfg.get("data_mappings", []):
+        if "note" not in m:
+            m["note"] = ""
+    for m in cfg.get("image_mappings", []):
+        if "position" not in m:
+            m["position"] = "top-left"
+            m["offset_x_cm"] = 0
+            m["offset_y_cm"] = 0
+        if "note" not in m:
+            m["note"] = ""
+    if "output_dir" not in cfg:
+        cfg["output_dir"] = ""
+    return cfg
+
+def get_default_config():
+    return {
+        "data_sources": [],
+        "template_path": "",
+        "output_dir": "",
+        "output_suffix": "_已更新",
+        "data_mappings": [],
+        "image_mappings": []
+    }
+
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("VSA_MBO_PBO 一鍵產生器")
+        self.root.geometry("1050x800")
+        self.config = load_config()
+        self.current_config_name = CONFIG_FILE
+
+        self.tpl_path_var = tk.StringVar(value=self.config.get("template_path", ""))
+        self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", ""))
+        self.suffix_var = tk.StringVar(value=self.config.get("output_suffix", "_已更新"))
+
+        # ---------- 狀態列 ----------
+        self.status_frame = ttk.Frame(root, relief=tk.RAISED, borderwidth=2)
+        self.status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+        self.status_var = tk.StringVar()
+        ttk.Label(self.status_frame, textvariable=self.status_var,
+                  background="#D9EAF7", font=("微軟正黑體", 10, "bold")).pack(fill=tk.X, padx=10, pady=5)
+        self.update_status_bar()
+
+        # ---------- 範本與輸出 ----------
+        frm_tpl = ttk.LabelFrame(root, text="範本與輸出設定")
+        frm_tpl.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(frm_tpl, text="範本檔案:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(frm_tpl, textvariable=self.tpl_path_var, width=70).grid(row=0, column=1, padx=5, pady=2)
+        ttk.Button(frm_tpl, text="瀏覽", command=self.browse_tpl).grid(row=0, column=2, padx=5)
+        ttk.Label(frm_tpl, text="輸出資料夾:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(frm_tpl, textvariable=self.out_dir_var, width=70).grid(row=1, column=1, padx=5, pady=2)
+        ttk.Button(frm_tpl, text="瀏覽", command=self.browse_out_dir).grid(row=1, column=2, padx=5)
+        ttk.Label(frm_tpl, text="輸出檔案後綴:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Entry(frm_tpl, textvariable=self.suffix_var, width=15).grid(row=2, column=1, sticky=tk.W, padx=5)
+        ttk.Label(frm_tpl, text="輸出資料夾留空則儲存至範本所在目錄", foreground="gray").grid(row=3, column=1, sticky=tk.W, padx=5)
+
+        # ---------- 資料來源管理（含捲軸） ----------
+        frm_ds = ttk.LabelFrame(root, text="資料來源管理")
+        frm_ds.pack(fill=tk.X, padx=10, pady=5)
+        ds_container = ttk.Frame(frm_ds)
+        ds_container.pack(fill=tk.X, padx=5, pady=5)
+        self.ds_tree = ttk.Treeview(ds_container, columns=("alias", "path"), show="headings", height=3)
+        self.ds_tree.heading("alias", text="別名")
+        self.ds_tree.heading("path", text="路徑")
+        self.ds_tree.column("alias", width=150)
+        self.ds_tree.column("path", width=600)
+        vsb_ds = ttk.Scrollbar(ds_container, orient="vertical", command=self.ds_tree.yview)
+        self.ds_tree.configure(yscrollcommand=vsb_ds.set)
+        self.ds_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_ds.grid(row=0, column=1, sticky="ns")
+        ds_container.grid_columnconfigure(0, weight=1)
+          with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 def load_config():
