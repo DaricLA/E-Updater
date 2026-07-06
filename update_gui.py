@@ -42,7 +42,6 @@ def load_config():
         return get_default_config()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    # 向后兼容
     if "data_source_path" in cfg and "data_sources" not in cfg:
         old_path = cfg.pop("data_source_path")
         cfg["data_sources"] = [{"alias": "默认数据源", "path": old_path}]
@@ -101,36 +100,49 @@ class App:
         ttk.Entry(frm_tpl, textvariable=self.suffix_var, width=15).grid(row=2, column=1, sticky=tk.W, padx=5)
         ttk.Label(frm_tpl, text="输出文件夹留空则保存到模板所在目录", foreground="gray").grid(row=3, column=1, sticky=tk.W, padx=5)
 
-        # ---------- 数据源管理 ----------
+        # ---------- 数据源管理（带滚动条） ----------
         frm_ds = ttk.LabelFrame(root, text="数据源管理")
         frm_ds.pack(fill=tk.X, padx=10, pady=5)
-        self.ds_tree = ttk.Treeview(frm_ds, columns=("alias", "path"), show="headings", height=3)
+        ds_container = ttk.Frame(frm_ds)
+        ds_container.pack(fill=tk.X, padx=5, pady=5)
+        self.ds_tree = ttk.Treeview(ds_container, columns=("alias", "path"), show="headings", height=3)
         self.ds_tree.heading("alias", text="别名")
         self.ds_tree.heading("path", text="路径")
         self.ds_tree.column("alias", width=150)
         self.ds_tree.column("path", width=600)
-        self.ds_tree.pack(fill=tk.X, padx=5, pady=5)
+        vsb_ds = ttk.Scrollbar(ds_container, orient="vertical", command=self.ds_tree.yview)
+        self.ds_tree.configure(yscrollcommand=vsb_ds.set)
+        self.ds_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_ds.grid(row=0, column=1, sticky="ns")
+        ds_container.grid_columnconfigure(0, weight=1)
         btn_frm_ds = ttk.Frame(frm_ds)
         btn_frm_ds.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(btn_frm_ds, text="添加数据源", command=self.add_datasource).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_ds, text="编辑选中", command=self.edit_datasource).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_ds, text="删除选中", command=self.delete_datasource).pack(side=tk.LEFT, padx=5)
 
-        # ---------- 映射管理 ----------
+        # ---------- 映射管理（Notebook） ----------
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # ---- 数据映射页 ----
+        # ---- 数据映射页（带滚动条） ----
         frm_data = ttk.Frame(nb)
         nb.add(frm_data, text="数据映射")
-        self.data_tree = ttk.Treeview(frm_data, columns=("source_alias", "source_cell", "target_cell"), show="headings", height=6)
+        data_container = ttk.Frame(frm_data)
+        data_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.data_tree = ttk.Treeview(data_container, columns=("source_alias", "source_cell", "target_cell"), show="headings")
         self.data_tree.heading("source_alias", text="数据源")
         self.data_tree.heading("source_cell", text="源单元格")
         self.data_tree.heading("target_cell", text="目标单元格")
         self.data_tree.column("source_alias", width=120)
         self.data_tree.column("source_cell", width=220)
         self.data_tree.column("target_cell", width=220)
-        self.data_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_data = ttk.Scrollbar(data_container, orient="vertical", command=self.data_tree.yview)
+        self.data_tree.configure(yscrollcommand=vsb_data.set)
+        self.data_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_data.grid(row=0, column=1, sticky="ns")
+        data_container.grid_rowconfigure(0, weight=1)
+        data_container.grid_columnconfigure(0, weight=1)
         btn_frm_data = ttk.Frame(frm_data)
         btn_frm_data.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(btn_frm_data, text="添加", command=self.add_data_mapping).pack(side=tk.LEFT, padx=5)
@@ -138,10 +150,12 @@ class App:
         ttk.Button(btn_frm_data, text="复制选中", command=self.copy_data_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_data, text="删除选中", command=lambda: self.delete_selected(self.data_tree, "data")).pack(side=tk.LEFT, padx=5)
 
-        # ---- 图片映射页（列顺序：编号、文件夹、目标、高度、宽度、位置） ----
+        # ---- 图片映射页（带滚动条，列顺序：编号、文件夹、目标、高度、宽度、位置） ----
         frm_img = ttk.Frame(nb)
         nb.add(frm_img, text="图片映射")
-        self.img_tree = ttk.Treeview(frm_img, columns=("number", "folder", "target", "height", "width", "position"), show="headings", height=6)
+        img_container = ttk.Frame(frm_img)
+        img_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.img_tree = ttk.Treeview(img_container, columns=("number", "folder", "target", "height", "width", "position"), show="headings")
         self.img_tree.heading("number", text="图片编号")
         self.img_tree.heading("folder", text="图片文件夹")
         self.img_tree.heading("target", text="目标单元格")
@@ -154,7 +168,12 @@ class App:
         self.img_tree.column("height", width=70)
         self.img_tree.column("width", width=70)
         self.img_tree.column("position", width=100)
-        self.img_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        vsb_img = ttk.Scrollbar(img_container, orient="vertical", command=self.img_tree.yview)
+        self.img_tree.configure(yscrollcommand=vsb_img.set)
+        self.img_tree.grid(row=0, column=0, sticky="nsew")
+        vsb_img.grid(row=0, column=1, sticky="ns")
+        img_container.grid_rowconfigure(0, weight=1)
+        img_container.grid_columnconfigure(0, weight=1)
         btn_frm_img = ttk.Frame(frm_img)
         btn_frm_img.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(btn_frm_img, text="添加", command=self.add_image_mapping).pack(side=tk.LEFT, padx=5)
@@ -165,14 +184,19 @@ class App:
         # ---------- 控制按钮 ----------
         btn_frm_ctrl = ttk.Frame(root)
         btn_frm_ctrl.pack(pady=10)
-        ttk.Button(btn_frm_ctrl, text="一键更新报告", command=self.run_update).pack(side=tk.LEFT, padx=10)
+        run_btn = tk.Button(btn_frm_ctrl, text="⚡ 一键更新报告", command=self.run_update,
+                            bg="#0078D7", fg="white", font=("微软雅黑", 11, "bold"),
+                            activebackground="#005A9E", activeforeground="white",
+                            relief=tk.RAISED, bd=2, padx=15, pady=5)
+        run_btn.pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frm_ctrl, text="导出配置", command=self.export_config).pack(side=tk.LEFT, padx=10)
         ttk.Button(btn_frm_ctrl, text="导入配置", command=self.import_config).pack(side=tk.LEFT, padx=10)
 
-        # ---------- 开发者联系水印（右下角，修正邮箱） ----------
-        dev_label = tk.Label(root, text="Contact the Developer: shao-qing.lai@mail.foxconn.com",
-                             fg="lightgray", font=("Arial", 8), bg=root.cget("bg"))
-        dev_label.place(relx=1.0, rely=1.0, anchor='se', x=-10, y=-10)
+        # ---------- 开发者水印（固定在底部，永不被遮挡） ----------
+        water_frame = ttk.Frame(root)
+        water_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
+        tk.Label(water_frame, text="Contact the Developer: shao-qing.lai@mail.foxconn.com",
+                 fg="lightgray", font=("Arial", 8), bg=root.cget("bg")).pack(side=tk.RIGHT)
 
         self.refresh_datasource_tree()
         self.refresh_data_tree()
