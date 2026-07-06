@@ -40,12 +40,10 @@ def cm_to_emu(cm_val):
 def get_cell_value(wb, sheet_name, cell_ref):
     """從 openpyxl 或 xlrd 工作簿獲取儲存格值"""
     if isinstance(wb, xlrd.Book):
-        # xlrd 工作簿
         sheet = wb.sheet_by_name(sheet_name)
-        row, col = coordinate_to_tuple(cell_ref)  # 返回 (row, col) 從 1 開始
+        row, col = coordinate_to_tuple(cell_ref)
         return sheet.cell_value(row - 1, col - 1)
     else:
-        # openpyxl 工作簿
         ws = wb[sheet_name]
         return ws[cell_ref].value
 
@@ -60,7 +58,6 @@ def load_config():
         return get_default_config()
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         cfg = json.load(f)
-    # 向後相容舊格式
     if "data_source_path" in cfg and "data_sources" not in cfg:
         old_path = cfg.pop("data_source_path")
         cfg["data_sources"] = [{"alias": "預設資料來源", "path": old_path}]
@@ -149,7 +146,7 @@ class App:
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # ---- 資料對應頁（含捲軸，增加「備註」欄位） ----
+        # ---- 資料對應頁 ----
         frm_data = ttk.Frame(nb)
         nb.add(frm_data, text="資料對應")
         data_container = ttk.Frame(frm_data)
@@ -176,7 +173,7 @@ class App:
         ttk.Button(btn_frm_data, text="複製選取", command=self.copy_data_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_data, text="刪除選取", command=lambda: self.delete_selected(self.data_tree, "data")).pack(side=tk.LEFT, padx=5)
 
-        # ---- 圖片對應頁（含捲軸，欄位順序：編號、資料夾、目標、高度、寬度、位置、備註） ----
+        # ---- 圖片對應頁 ----
         frm_img = ttk.Frame(nb)
         nb.add(frm_img, text="圖片對應")
         img_container = ttk.Frame(frm_img)
@@ -209,7 +206,7 @@ class App:
         ttk.Button(btn_frm_img, text="複製選取", command=self.copy_image_mapping).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frm_img, text="刪除選取", command=lambda: self.delete_selected(self.img_tree, "image")).pack(side=tk.LEFT, padx=5)
 
-        # ---------- 控制按鈕（統一尺寸） ----------
+        # ---------- 控制按鈕 ----------
         btn_frm_ctrl = ttk.Frame(root)
         btn_frm_ctrl.pack(pady=10)
         btn_common = {"font": ("微軟正黑體", 10), "width": 12, "height": 1, "relief": tk.RAISED, "bd": 2}
@@ -221,7 +218,7 @@ class App:
         import_btn = tk.Button(btn_frm_ctrl, text="匯入設定", command=self.import_config, **btn_common)
         import_btn.pack(side=tk.LEFT, padx=10)
 
-        # ---------- 開發者水印（固定於底部） ----------
+        # ---------- 開發者水印 ----------
         water_frame = ttk.Frame(root)
         water_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
         tk.Label(water_frame, text="Contact the Developer: shao-qing.lai@mail.foxconn.com",
@@ -316,17 +313,12 @@ class App:
         del self.config["data_sources"][idx]
         self.refresh_datasource_tree()
 
-    # ---------- 資料對應操作（包含備註） ----------
+    # ---------- 資料對應操作 ----------
     def refresh_data_tree(self):
         for i in self.data_tree.get_children():
             self.data_tree.delete(i)
         for m in self.config.get("data_mappings", []):
-            self.data_tree.insert("", tk.END, values=(
-                m.get("source_alias", ""),
-                m["source_cell"],
-                m["target_cell"],
-                m.get("note", "")
-            ))
+            self.data_tree.insert("", tk.END, values=(m.get("source_alias", ""), m["source_cell"], m["target_cell"], m.get("note", "")))
 
     def add_data_mapping(self, prefill=None):
         self._data_dialog(None, prefill)
@@ -388,12 +380,7 @@ class App:
             if not alias or not src or not tgt:
                 messagebox.showwarning("輸入不完整", "所有欄位不能為空")
                 return
-            new_map = {
-                "source_alias": alias,
-                "source_cell": src,
-                "target_cell": tgt,
-                "note": note
-            }
+            new_map = {"source_alias": alias, "source_cell": src, "target_cell": tgt, "note": note}
             if edit_idx is not None:
                 self.config["data_mappings"][edit_idx] = new_map
             else:
@@ -402,7 +389,7 @@ class App:
             popup.destroy()
         ttk.Button(popup, text="確定", command=save).grid(row=row, column=0, columnspan=2, pady=10)
 
-    # ---------- 圖片對應操作（包含備註） ----------
+    # ---------- 圖片對應操作（修復備註重疊） ----------
     def refresh_image_tree(self):
         for i in self.img_tree.get_children():
             self.img_tree.delete(i)
@@ -443,26 +430,28 @@ class App:
         popup = tk.Toplevel(self.root)
         popup.title("編輯圖片對應" if edit_idx is not None else "新增圖片對應")
         row = 0
+        # 圖片編號
         ttk.Label(popup, text="圖片編號:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         num_entry = ttk.Entry(popup, width=30)
         num_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        # 圖片資料夾
         ttk.Label(popup, text="圖片資料夾:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         folder_var = tk.StringVar()
         folder_entry = ttk.Entry(popup, textvariable=folder_var, width=30)
         folder_entry.grid(row=row, column=1, padx=5, pady=5)
         ttk.Button(popup, text="瀏覽", command=lambda: folder_var.set(filedialog.askdirectory())).grid(row=row, column=2, padx=5); row+=1
+        # 目標儲存格
         ttk.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         tgt_entry = ttk.Entry(popup, width=30)
         tgt_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
-
-        # 高度在上，寬度在下
+        # 高度
         ttk.Label(popup, text="高度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         h_entry = ttk.Entry(popup, width=10)
         h_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
+        # 寬度
         ttk.Label(popup, text="寬度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         w_entry = ttk.Entry(popup, width=10)
         w_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
-
         # 位置選擇
         ttk.Label(popup, text="位置:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         pos_var = tk.StringVar(value="top-left")
@@ -470,6 +459,7 @@ class App:
         pos_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W)
         ttk.Radiobutton(pos_frame, text="預設（左上角）", variable=pos_var, value="top-left").pack(side=tk.LEFT)
         ttk.Radiobutton(pos_frame, text="自訂偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10); row+=1
+        # 偏移輸入框
         offset_frame = ttk.Frame(popup)
         offset_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W, pady=5)
         ttk.Label(offset_frame, text="X偏移(cm):").pack(side=tk.LEFT)
@@ -478,6 +468,7 @@ class App:
         ttk.Label(offset_frame, text="Y偏移(cm):").pack(side=tk.LEFT, padx=(15,0))
         y_entry = ttk.Entry(offset_frame, width=8)
         y_entry.pack(side=tk.LEFT, padx=5)
+        row += 1  # 偏移框佔用一行，備註從下一行開始
 
         def toggle_offset(*args):
             if pos_var.get() == "custom":
@@ -490,11 +481,12 @@ class App:
                 y_entry.delete(0, tk.END); y_entry.insert(0, "0")
         pos_var.trace("w", toggle_offset)
 
-        # 備註
+        # 備註（現在放在偏移框之後）
         ttk.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         note_entry = ttk.Entry(popup, width=30)
         note_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
 
+        # 填入現有資料
         if item:
             num_entry.insert(0, item["image_number"])
             folder_var.set(item["image_folder"])
@@ -550,7 +542,7 @@ class App:
                 self.config["image_mappings"].append(new_map)
             self.refresh_image_tree()
             popup.destroy()
-        ttk.Button(popup, text="確定", command=save).grid(row=row+1, column=0, columnspan=3, pady=10)
+        ttk.Button(popup, text="確定", command=save).grid(row=row, column=0, columnspan=3, pady=10)
 
     def delete_selected(self, tree, map_type):
         selected = tree.selection()
@@ -626,7 +618,7 @@ class App:
                         messagebox.showerror("錯誤", "讀取 .xls 檔案需要安裝 xlrd 程式庫，請執行 pip install xlrd")
                         return
                     wb = xlrd.open_workbook(path)
-                else:  # .xlsx or others
+                else:
                     wb = load_workbook(path, data_only=True)
                 data_wbs[ds["alias"]] = wb
             except Exception as e:
@@ -641,10 +633,8 @@ class App:
             wb = load_workbook(cfg["template_path"])
         except Exception as e:
             for w in data_wbs.values():
-                if isinstance(w, xlrd.Book):
-                    pass  # xlrd 不需要 close
-                else:
-                    w.close()
+                if isinstance(w, xlrd.Book): pass
+                else: w.close()
             messagebox.showerror("開啟範本失敗", str(e))
             return
 
@@ -655,14 +645,11 @@ class App:
                 if alias not in data_wbs:
                     raise ValueError(f"資料來源別名 '{alias}' 不存在或未載入")
                 wb_src = data_wbs[alias]
-                if "!" not in m["source_cell"]:
-                    raise ValueError("缺少 '!' 分隔符")
-                if "!" not in m["target_cell"]:
-                    raise ValueError("缺少 '!' 分隔符")
+                if "!" not in m["source_cell"]: raise ValueError("缺少 '!' 分隔符")
+                if "!" not in m["target_cell"]: raise ValueError("缺少 '!' 分隔符")
                 src_sh, src_cell = m["source_cell"].split("!", 1)
                 tgt_sh, tgt_cell = m["target_cell"].split("!", 1)
 
-                # 檢查來源工作表是否存在
                 if isinstance(wb_src, xlrd.Book):
                     if src_sh not in wb_src.sheet_names():
                         raise KeyError(f"資料來源[{alias}]中不存在工作表：'{src_sh}'\n可用工作表：{wb_src.sheet_names()}")
@@ -677,15 +664,13 @@ class App:
                 ws_tgt[tgt_cell].value = value
             except Exception as e:
                 for w in data_wbs.values():
-                    if isinstance(w, xlrd.Book):
-                        pass
-                    else:
-                        w.close()
+                    if isinstance(w, xlrd.Book): pass
+                    else: w.close()
                 wb.close()
                 messagebox.showerror("資料寫入錯誤", f"對應 {i+1}:\n來源 {m['source_cell']} → 目標 {m['target_cell']}\n錯誤：{e}")
                 return
 
-        # 圖片插入（保持不變）
+        # 圖片插入
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -725,7 +710,6 @@ class App:
                 img.height = cm_to_px(m["height_cm"])
                 ws_tgt.add_image(img, tgt_cell)
 
-                # 偏移處理
                 if m.get("position") == "custom":
                     off_x = m.get("offset_x_cm", 0)
                     off_y = m.get("offset_y_cm", 0)
@@ -737,18 +721,10 @@ class App:
                     elif isinstance(anchor, str):
                         if HAS_XDR:
                             row_num, col_idx = coordinate_to_tuple(anchor)
-                            marker = AnchorMarker(
-                                col=col_idx - 1,
-                                row=row_num - 1,
-                                colOff=cm_to_emu(off_x),
-                                rowOff=cm_to_emu(off_y)
-                            )
-                            ext = XDRPositiveSize2D(
-                                cx=cm_to_emu(m["width_cm"]),
-                                cy=cm_to_emu(m["height_cm"])
-                            )
-                            new_anchor = OneCellAnchor(_from=marker, ext=ext)
-                            img.anchor = new_anchor
+                            marker = AnchorMarker(col=col_idx - 1, row=row_num - 1,
+                                                  colOff=cm_to_emu(off_x), rowOff=cm_to_emu(off_y))
+                            ext = XDRPositiveSize2D(cx=cm_to_emu(m["width_cm"]), cy=cm_to_emu(m["height_cm"]))
+                            img.anchor = OneCellAnchor(_from=marker, ext=ext)
                         else:
                             skipped_details.append(f"對應{i+1}: 自訂偏移未生效（缺少XDR支援）")
                     else:
@@ -762,12 +738,9 @@ class App:
                 messagebox.showerror("圖片插入錯誤", f"圖片對應 {i+1}:\n編號 {m['image_number']}，目標 {m['target_cell']}\n錯誤：{e}")
                 return
 
-        # 關閉所有 xlrd 工作簿（無需關閉）和 openpyxl 工作簿
         for w in data_wbs.values():
-            if isinstance(w, xlrd.Book):
-                pass
-            else:
-                w.close()
+            if isinstance(w, xlrd.Book): pass
+            else: w.close()
 
         # 輸出檔案
         tpl_path = Path(cfg["template_path"])
