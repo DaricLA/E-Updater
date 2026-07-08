@@ -21,10 +21,10 @@ jobs:
 
       - name: Build Launcher
         run: |
-          pyinstaller --onefile --windowed --clean --name "工具啟動器" launcher.py
+          pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" launcher.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 工具啟動器
-          path: dist/工具啟動器.exe
+          name: VSAPE工具箱
+          path: dist/VSAPE工具箱.exe
