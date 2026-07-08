@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Windows EXE (Obfuscated)
 
 on:
   workflow_dispatch:
@@ -18,13 +18,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
-          pip install pyinstaller tinyaes
+          pip install pyinstaller pyarmor
 
-      - name: Build EXE (encrypted)
-        env:
-          ENC_KEY: ${{ secrets.ENCRYPT_KEY }}
+      - name: Obfuscate with PyArmor
         run: |
-          pyinstaller --onefile --windowed --clean --key "%ENC_KEY%" --name "VSA_MBO_PBO一键生成器" `
+          pyarmor gen --output obfuscated update_gui.py
+
+      - name: Build EXE from obfuscated code
+        run: |
+          pyinstaller --onefile --windowed --clean --name "VSA_MBO_PBO一键生成器" `
             --collect-all openpyxl `
             --collect-all PIL `
             --collect-all et_xmlfile `
@@ -37,10 +39,10 @@ jobs:
             --hidden-import xml.etree.ElementTree `
             --hidden-import xml.parsers.expat `
             --hidden-import collections.abc `
-            update_gui.py
+            obfuscated/update_gui.py
 
       - name: Upload EXE as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VSA_MBO_PBO一键生成器-Encrypted
+          name: VSA_MBO_PBO一键生成器-Obfuscated
           path: dist/VSA_MBO_PBO一键生成器.exe
