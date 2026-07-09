@@ -71,7 +71,7 @@ class Launcher:
         # 进度条
         self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
 
-        # 滚动区域（左右边距均为20，保证居中）
+        # 滚动区域
         canvas_frame = ttk.Frame(root)
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
 
@@ -83,10 +83,14 @@ class Launcher:
             "<Configure>",
             lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        # 创建窗口并保存 ID
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 内部布局：canvas 填满左侧，滚动条贴右
+        # 同步 scrollable_frame 宽度与 canvas
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        # 布局：canvas 填满左侧，滚动条贴右
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
@@ -99,19 +103,46 @@ class Launcher:
             ttk.Label(self.scrollable_frame, text="無可用工具",
                       font=("微软雅黑", 12)).pack(pady=50)
 
-        # 自适应窗口尺寸
+        # 自适应窗口尺寸并锁定
         self.root.update_idletasks()
-        req_width = self.scrollable_frame.winfo_reqwidth() + 60   # 左右边距各30补偿滚动条
-        win_width = max(req_width, 900)
+        self._adjust_window_size()
+
+    def _on_canvas_configure(self, event):
+        """让 scrollable_frame 的宽度始终等于 canvas 的可视宽度"""
+        canvas_width = event.width
+        self.canvas.itemconfig(self.canvas_window, width=canvas_width)
+
+    def _adjust_window_size(self):
+        """根据内容动态设置窗口大小，并保持左右对称"""
+        # 获取卡片内容实际需要的尺寸
+        self.scrollable_frame.update_idletasks()
+        req_width = self.scrollable_frame.winfo_reqwidth()
+        req_height = self.scrollable_frame.winfo_reqheight()
+
+        # 获取标题区域高度
+        title_height = 70
+        progress_height = 25
+        padding = 30
+
+        # 显示 3 行卡片所需高度
+        card_height = 0
         children = self.scrollable_frame.winfo_children()
         if children:
+            # 取第一行卡片的高度
             card_height = children[0].winfo_reqheight()
-            title_height = 60
-            progress_height = 25
-            padding = 40
-            win_height = title_height + progress_height + card_height * 3 + padding
-        else:
-            win_height = 400
+        visible_height = card_height * 3 if card_height else req_height
+
+        # 窗口总高度：标题 + 进度条预留 + 可见行高度 + 边距
+        win_height = title_height + progress_height + visible_height + padding
+
+        # 窗口总宽度：内容宽度 + 滚动条宽度(约20) + 左右各20边距
+        scrollbar_width = 20
+        win_width = req_width + scrollbar_width + 40
+
+        # 设置一个合理的最小尺寸
+        win_width = max(win_width, 800)
+        win_height = max(win_height, 500)
+
         self.root.geometry(f"{win_width}x{win_height}")
         self.root.resizable(False, False)
 
@@ -200,13 +231,11 @@ class Launcher:
             self.root.after(200, lambda: self._check_launch_success(exe_name, proc))
 
     def _check_launch_success(self, exe_name, proc):
-        """如果进程正在运行，跳至100%并隐藏；否则说明启动失败，停在70%并弹窗报错"""
         if proc.poll() is None:
             self.progress['value'] = 100
             self.root.update()
             self.root.after(300, lambda: self._hide_progress(exe_name))
         else:
-            # 启动失败，不改变进度条数值，直接弹窗并隐藏进度条
             self.root.after(100, lambda: self._hide_progress_error(exe_name, proc))
 
     def _hide_progress(self, exe_name):
