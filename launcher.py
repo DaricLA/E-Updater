@@ -194,7 +194,7 @@ class Launcher:
         self.root.update()
 
         try:
-            # 切换工作目录到 exe 所在文件夹，确保子工具能找到依赖文件
+            # 使用最简单的启动方式，与旧版完全一致
             proc = subprocess.Popen([exe_path], shell=True, cwd=os.path.dirname(exe_path))
             self.processes[exe_name] = proc
         except Exception as e:
@@ -202,7 +202,18 @@ class Launcher:
             self.progress.pack_forget()
             return
 
-        self._simulate_progress(exe_name, proc)
+        # 启动后延迟检测进程是否立即退出
+        self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
+
+    def _check_launch_error(self, exe_name, proc):
+        """如果进程在短时间内退出，说明启动失败，弹出错误"""
+        if proc.poll() is not None:
+            self.progress.pack_forget()
+            messagebox.showerror("啟動失敗", f"工具 '{exe_name}' 返回碼 {proc.returncode}，可能缺少必要檔案或程式損壞。")
+            self.processes.pop(exe_name, None)
+        else:
+            # 正常运行，继续进度条模拟
+            self._simulate_progress(exe_name, proc)
 
     def _simulate_progress(self, exe_name, proc):
         current = self.progress['value']
@@ -213,29 +224,26 @@ class Launcher:
             if new_val < 70:
                 self.root.after(50, lambda: self._simulate_progress(exe_name, proc))
             else:
-                self.root.after(200, lambda: self._check_launch_success(exe_name, proc))
+                self.root.after(200, lambda: self._finalize_progress(exe_name, proc))
         else:
-            self.root.after(200, lambda: self._check_launch_success(exe_name, proc))
+            self.root.after(200, lambda: self._finalize_progress(exe_name, proc))
 
-    def _check_launch_success(self, exe_name, proc):
+    def _finalize_progress(self, exe_name, proc):
+        """最终确认进程状态：仍在运行则进度条填满，否则报错"""
         if proc.poll() is None:
             self.progress['value'] = 100
             self.root.update()
             self.root.after(300, lambda: self._hide_progress(exe_name))
         else:
-            self.root.after(100, lambda: self._hide_progress_error(exe_name, proc))
+            self.progress.pack_forget()
+            messagebox.showerror("啟動失敗", f"工具 '{exe_name}' 返回碼 {proc.returncode}，可能因為缺少檔案或配置錯誤。")
+            self.processes.pop(exe_name, None)
 
     def _hide_progress(self, exe_name):
         self.progress.pack_forget()
         proc = self.processes.get(exe_name)
         if proc and proc.poll() is not None:
             self.processes.pop(exe_name, None)
-
-    def _hide_progress_error(self, exe_name, proc):
-        self.progress.pack_forget()
-        if proc.returncode != 0:
-            messagebox.showerror("錯誤", f"工具 '{exe_name}' 啟動失敗，返回碼：{proc.returncode}")
-        self.processes.pop(exe_name, None)
 
 if __name__ == "__main__":
     root = tk.Tk()
