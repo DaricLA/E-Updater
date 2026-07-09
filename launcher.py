@@ -7,13 +7,11 @@ from tkinter import messagebox, ttk
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
-# 默认值
 DEFAULT_BUTTON_COLOR = "#0078D7"
 DEFAULT_FONT_SIZE = 12
 DEFAULT_TEXT_COLOR = "#FFFFFF"
 
 def parse_color(value, default):
-    """将颜色配置转换为 tkinter 可接受的十六进制格式，失败时返回 default"""
     if value is None:
         return default
     if isinstance(value, str) and value.startswith("#"):
@@ -70,12 +68,12 @@ class Launcher:
         ttk.Label(title_frame, text="選擇要啟動的工具",
                   font=("微软雅黑", 14, "bold")).pack()
 
-        # 进度条（隐藏）
+        # 进度条
         self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
 
-        # 滚动区域
+        # 滚动区域（左右边距均为20，保证居中）
         canvas_frame = ttk.Frame(root)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=(20, 5), pady=(5, 10))
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
 
         self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
         self.scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.canvas.yview)
@@ -88,8 +86,9 @@ class Launcher:
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.canvas.pack(side="left", fill="both", expand=True, padx=(10, 0))
-        self.scrollbar.pack(side="right", fill="y", padx=(0, 10))
+        # 内部布局：canvas 填满左侧，滚动条贴右
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
 
         self.canvas.bind("<Enter>", self._bind_mousewheel)
         self.canvas.bind("<Leave>", self._unbind_mousewheel)
@@ -102,7 +101,7 @@ class Launcher:
 
         # 自适应窗口尺寸
         self.root.update_idletasks()
-        req_width = self.scrollable_frame.winfo_reqwidth() + 80
+        req_width = self.scrollable_frame.winfo_reqwidth() + 60   # 左右边距各30补偿滚动条
         win_width = max(req_width, 900)
         children = self.scrollable_frame.winfo_children()
         if children:
@@ -136,7 +135,6 @@ class Launcher:
                             padx=10, pady=10)
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
 
-            # 解析颜色
             btn_color = parse_color(tool.get("button_color"), DEFAULT_BUTTON_COLOR)
             text_color = parse_color(tool.get("text_color"), DEFAULT_TEXT_COLOR)
             btn_font_size = tool.get("font_size", DEFAULT_FONT_SIZE)
@@ -202,14 +200,14 @@ class Launcher:
             self.root.after(200, lambda: self._check_launch_success(exe_name, proc))
 
     def _check_launch_success(self, exe_name, proc):
+        """如果进程正在运行，跳至100%并隐藏；否则说明启动失败，停在70%并弹窗报错"""
         if proc.poll() is None:
             self.progress['value'] = 100
             self.root.update()
             self.root.after(300, lambda: self._hide_progress(exe_name))
         else:
-            self.progress['value'] = 100
-            self.root.update()
-            self.root.after(300, lambda: self._hide_progress_error(exe_name, proc))
+            # 启动失败，不改变进度条数值，直接弹窗并隐藏进度条
+            self.root.after(100, lambda: self._hide_progress_error(exe_name, proc))
 
     def _hide_progress(self, exe_name):
         self.progress.pack_forget()
