@@ -30,18 +30,6 @@ def parse_color(value, default):
             pass
     return default
 
-def get_clean_env():
-    """返回清理后的环境变量，保留所有系统变量，仅移除 Python 干扰项"""
-    env = os.environ.copy()
-    # 移除 Python 相关变量
-    for bad_key in ["PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "VIRTUAL_ENV"]:
-        env.pop(bad_key, None)
-    # 移除 PATH 中包含 PyInstaller 临时目录的路径（_MEI 开头）
-    original_path = env.get("PATH", "")
-    cleaned_paths = [p for p in original_path.split(os.pathsep) if "_MEI" not in p]
-    env["PATH"] = os.pathsep.join(cleaned_paths)
-    return env
-
 def load_tools():
     if not os.path.exists(TOOLS_CONFIG):
         messagebox.showerror("錯誤", f"找不到設定檔 {TOOLS_CONFIG}，請確認檔案是否存在。")
@@ -56,6 +44,7 @@ def load_tools():
     for tool in tools:
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
         if os.path.exists(exe_path):
+            tool.setdefault("start_method", "subprocess")   # 默认 subprocess
             tool.setdefault("set_cwd", True)
             tool.setdefault("shell", False)
             tool.setdefault("clean_env", False)
@@ -76,7 +65,8 @@ class Launcher:
         self.root.option_add("*Font", default_font)
 
         self.tools = load_tools()
-        self.processes = {}
+        self.processes = {}          # subprocess 模式用
+        self.startfile_records = {}  # startfile 模式防重复
 
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
@@ -194,18 +184,42 @@ class Launcher:
     def run_tool(self, tool_config):
         exe_name = tool_config["exe"]
         rel_path = os.path.join(TOOLS_DIR, exe_name)
-        exe_path = os.path.abspath(rel_path)
-        if not os.path.exists(exe_path):
-            messagebox.showerror("錯誤", f"找不到程式：{exe_path}")
+        target_path = os.path.abspath(rel_path)
+        if not os.path.exists(target_path):
+            messagebox.showerror("錯誤", f"找不到程式：{target_path}")
             return
 
+        # ---------- startfile 模式（完全模拟双击） ----------
+        if tool_config.get("start_method") == "startfile":
+            last_time = self.startfile_records.get(exe_name, 0)
+            now = time.time()
+            if now - last_time < 5:
+                messagebox.showinfo("提示", f"工具 '{exe_name}' 可能正在啟動，請稍後再試。")
+                return
+            self.startfile_records[exe_name] = now
+
+            self.progress.pack(pady=(0, 5))
+            self.progress['value'] = 0
+            self.root.update()
+            self._animate_startfile_progress()
+
+            try:
+                os.startfile(target_path)
+            except Exception as e:
+                messagebox.showerror("啟動失敗", str(e))
+                self.progress.pack_forget()
+            return
+
+        # ---------- 标准 subprocess 模式 ----------
         set_cwd = tool_config.get("set_cwd", True)
         use_shell = tool_config.get("shell", False)
         clean_env = tool_config.get("clean_env", False)
-        work_dir = os.path.dirname(exe_path) if set_cwd else None
+        work_dir = os.path.dirname(target_path) if set_cwd else None
 
-        # 根据配置选择环境
-        env = get_clean_env() if clean_env else os.environ.copy()
+        env = os.environ.copy()
+        if clean_env:
+            for bad_key in ["PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "VIRTUAL_ENV"]:
+                env.pop(bad_key, None)
 
         existing = self.processes.get(exe_name)
         if existing is not None and existing.poll() is None:
@@ -218,9 +232,9 @@ class Launcher:
 
         try:
             if use_shell:
-                proc = subprocess.Popen(f'"{exe_path}"', shell=True, cwd=work_dir, env=env)
+                proc = subprocess.Popen(f'"{target_path}"', shell=True, cwd=work_dir, env=env)
             else:
-                proc = subprocess.Popen([exe_path], cwd=work_dir, env=env)
+                proc = subprocess.Popen([target_path], cwd=work_dir, env=env)
             self.processes[exe_name] = proc
         except Exception as e:
             messagebox.showerror("啟動失敗", str(e))
@@ -228,6 +242,16 @@ class Launcher:
             return
 
         self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
+
+    def _animate_startfile_progress(self):
+        current = self.progress['value']
+        if current < 100:
+            new_val = min(current + 20, 100)
+            self.progress['value'] = new_val
+            self.root.update()
+            self.root.after(50, self._animate_startfile_progress)
+        else:
+            self.root.after(200, self.progress.pack_forget)
 
     def _check_launch_error(self, exe_name, proc):
         if proc.poll() is not None:
