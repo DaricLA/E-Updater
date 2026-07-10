@@ -179,7 +179,11 @@ class Launcher:
                 row += 1
 
     def run_tool(self, exe_name):
-        exe_path = os.path.join(TOOLS_DIR, exe_name)
+        # 构建相对于启动器的原始路径，再转为绝对路径，确保不受 cwd 影响
+        rel_path = os.path.join(TOOLS_DIR, exe_name)
+        exe_path = os.path.abspath(rel_path)
+        work_dir = os.path.dirname(exe_path)
+
         if not os.path.exists(exe_path):
             messagebox.showerror("錯誤", f"找不到程式：{exe_path}")
             return
@@ -194,25 +198,22 @@ class Launcher:
         self.root.update()
 
         try:
-            # 使用最简单的启动方式，与旧版完全一致
-            proc = subprocess.Popen([exe_path], shell=True, cwd=os.path.dirname(exe_path))
+            # 绝对路径 + 列表传参，不使用 shell=True，更稳定
+            proc = subprocess.Popen([exe_path], cwd=work_dir)
             self.processes[exe_name] = proc
         except Exception as e:
             messagebox.showerror("啟動失敗", str(e))
             self.progress.pack_forget()
             return
 
-        # 启动后延迟检测进程是否立即退出
         self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
 
     def _check_launch_error(self, exe_name, proc):
-        """如果进程在短时间内退出，说明启动失败，弹出错误"""
         if proc.poll() is not None:
             self.progress.pack_forget()
             messagebox.showerror("啟動失敗", f"工具 '{exe_name}' 返回碼 {proc.returncode}，可能缺少必要檔案或程式損壞。")
             self.processes.pop(exe_name, None)
         else:
-            # 正常运行，继续进度条模拟
             self._simulate_progress(exe_name, proc)
 
     def _simulate_progress(self, exe_name, proc):
@@ -229,7 +230,6 @@ class Launcher:
             self.root.after(200, lambda: self._finalize_progress(exe_name, proc))
 
     def _finalize_progress(self, exe_name, proc):
-        """最终确认进程状态：仍在运行则进度条填满，否则报错"""
         if proc.poll() is None:
             self.progress['value'] = 100
             self.root.update()
