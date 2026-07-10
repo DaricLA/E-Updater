@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import subprocess
 import time
 import tkinter as tk
@@ -32,32 +31,15 @@ def parse_color(value, default):
     return default
 
 def get_clean_env():
-    """返回一个干净的环境，移除 PyInstaller 带来的干扰"""
-    env = {}
-    # 保留基本系统变量（Windows 必需）
-    keep_keys = [
-        "SYSTEMROOT", "WINDIR", "TEMP", "TMP",
-        "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-        "HOMEDRIVE", "HOMEPATH", "COMPUTERNAME", "USERNAME",
-        "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS",
-        "OS", "PATHEXT", "COMSPEC",
-    ]
-    for key in keep_keys:
-        if key in os.environ:
-            env[key] = os.environ[key]
-
-    # 处理 PATH：移除 PyInstaller 临时目录（包含 _MEI 字样的路径）
-    original_path = os.environ.get("PATH", "")
-    cleaned_paths = []
-    for p in original_path.split(os.pathsep):
-        if "_MEI" not in p:   # PyInstaller 运行时会插入类似 _MEIxxxxx 的路径
-            cleaned_paths.append(p)
-    env["PATH"] = os.pathsep.join(cleaned_paths)
-
-    # 显式移除可能存在的 Python 相关环境变量
+    """返回清理后的环境变量，保留所有系统变量，仅移除 Python 干扰项"""
+    env = os.environ.copy()
+    # 移除 Python 相关变量
     for bad_key in ["PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "VIRTUAL_ENV"]:
         env.pop(bad_key, None)
-
+    # 移除 PATH 中包含 PyInstaller 临时目录的路径（_MEI 开头）
+    original_path = env.get("PATH", "")
+    cleaned_paths = [p for p in original_path.split(os.pathsep) if "_MEI" not in p]
+    env["PATH"] = os.pathsep.join(cleaned_paths)
     return env
 
 def load_tools():
@@ -222,11 +204,8 @@ class Launcher:
         clean_env = tool_config.get("clean_env", False)
         work_dir = os.path.dirname(exe_path) if set_cwd else None
 
-        # 构建环境变量
-        if clean_env:
-            env = get_clean_env()
-        else:
-            env = os.environ.copy()
+        # 根据配置选择环境
+        env = get_clean_env() if clean_env else os.environ.copy()
 
         existing = self.processes.get(exe_name)
         if existing is not None and existing.poll() is None:
