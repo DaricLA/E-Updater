@@ -43,6 +43,8 @@ def load_tools():
     for tool in tools:
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
         if os.path.exists(exe_path):
+            # 补充默认值
+            tool.setdefault("set_cwd", True)   # 默认切换工作目录
             valid_tools.append(tool)
         else:
             print(f"警告：工具 '{tool.get('name', '未知')}' 的程式檔 {exe_path} 不存在，將跳過。")
@@ -162,7 +164,8 @@ class Launcher:
                             activebackground=btn_color, activeforeground=text_color,
                             relief=tk.RAISED, bd=2,
                             wraplength=250, height=2,
-                            command=lambda exe=tool["exe"]: self.run_tool(exe))
+                            command=lambda exe=tool["exe"], set_cwd=tool.get("set_cwd", True):
+                                    self.run_tool(exe, set_cwd))
             btn.pack(fill=tk.X, pady=(5, 5))
 
             desc = tool.get("description", "")
@@ -178,11 +181,10 @@ class Launcher:
                 col = 0
                 row += 1
 
-    def run_tool(self, exe_name):
-        # 构建相对于启动器的原始路径，再转为绝对路径，确保不受 cwd 影响
+    def run_tool(self, exe_name, set_cwd=True):
         rel_path = os.path.join(TOOLS_DIR, exe_name)
         exe_path = os.path.abspath(rel_path)
-        work_dir = os.path.dirname(exe_path)
+        work_dir = os.path.dirname(exe_path) if set_cwd else None
 
         if not os.path.exists(exe_path):
             messagebox.showerror("錯誤", f"找不到程式：{exe_path}")
@@ -198,7 +200,6 @@ class Launcher:
         self.root.update()
 
         try:
-            # 绝对路径 + 列表传参，不使用 shell=True，更稳定
             proc = subprocess.Popen([exe_path], cwd=work_dir)
             self.processes[exe_name] = proc
         except Exception as e:
