@@ -44,7 +44,7 @@ def load_tools():
     for tool in tools:
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
         if os.path.exists(exe_path):
-            tool.setdefault("start_method", "subprocess")   # 默认 subprocess
+            tool.setdefault("start_method", "subprocess")
             tool.setdefault("set_cwd", True)
             tool.setdefault("shell", False)
             tool.setdefault("clean_env", False)
@@ -65,8 +65,8 @@ class Launcher:
         self.root.option_add("*Font", default_font)
 
         self.tools = load_tools()
-        self.processes = {}          # subprocess 模式用
-        self.startfile_records = {}  # startfile 模式防重复
+        self.processes = {}           # subprocess 模式用
+        self.launch_records = {}      # startfile / explorer 模式防重复
 
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
@@ -189,19 +189,41 @@ class Launcher:
             messagebox.showerror("錯誤", f"找不到程式：{target_path}")
             return
 
-        # ---------- startfile 模式（完全模拟双击） ----------
-        if tool_config.get("start_method") == "startfile":
-            last_time = self.startfile_records.get(exe_name, 0)
+        # ---------- explorer 启动（完全模拟资源管理器双击） ----------
+        if tool_config.get("start_method") == "explorer":
+            last_time = self.launch_records.get(exe_name, 0)
             now = time.time()
             if now - last_time < 5:
                 messagebox.showinfo("提示", f"工具 '{exe_name}' 可能正在啟動，請稍後再試。")
                 return
-            self.startfile_records[exe_name] = now
+            self.launch_records[exe_name] = now
 
             self.progress.pack(pady=(0, 5))
             self.progress['value'] = 0
             self.root.update()
-            self._animate_startfile_progress()
+            self._animate_simple_progress()
+
+            try:
+                # explorer.exe 启动程序，系统负责环境
+                subprocess.Popen(['explorer.exe', target_path])
+            except Exception as e:
+                messagebox.showerror("啟動失敗", str(e))
+                self.progress.pack_forget()
+            return
+
+        # ---------- startfile 模式 ----------
+        if tool_config.get("start_method") == "startfile":
+            last_time = self.launch_records.get(exe_name, 0)
+            now = time.time()
+            if now - last_time < 5:
+                messagebox.showinfo("提示", f"工具 '{exe_name}' 可能正在啟動，請稍後再試。")
+                return
+            self.launch_records[exe_name] = now
+
+            self.progress.pack(pady=(0, 5))
+            self.progress['value'] = 0
+            self.root.update()
+            self._animate_simple_progress()
 
             try:
                 os.startfile(target_path)
@@ -243,13 +265,13 @@ class Launcher:
 
         self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
 
-    def _animate_startfile_progress(self):
+    def _animate_simple_progress(self):
         current = self.progress['value']
         if current < 100:
             new_val = min(current + 20, 100)
             self.progress['value'] = new_val
             self.root.update()
-            self.root.after(50, self._animate_startfile_progress)
+            self.root.after(50, self._animate_simple_progress)
         else:
             self.root.after(200, self.progress.pack_forget)
 
