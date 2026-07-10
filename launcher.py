@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -43,8 +44,8 @@ def load_tools():
     for tool in tools:
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
         if os.path.exists(exe_path):
-            # 补充默认值
-            tool.setdefault("set_cwd", True)   # 默认切换工作目录
+            tool.setdefault("set_cwd", True)
+            tool.setdefault("start_method", "subprocess")
             valid_tools.append(tool)
         else:
             print(f"警告：工具 '{tool.get('name', '未知')}' 的程式檔 {exe_path} 不存在，將跳過。")
@@ -63,17 +64,15 @@ class Launcher:
 
         self.tools = load_tools()
         self.processes = {}
+        self.startfile_records = {}
 
-        # 标题
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
         ttk.Label(title_frame, text="選擇要啟動的工具",
                   font=("微软雅黑", 14, "bold")).pack()
 
-        # 进度条
         self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
 
-        # 滚动区域
         canvas_frame = ttk.Frame(root)
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
 
@@ -164,8 +163,7 @@ class Launcher:
                             activebackground=btn_color, activeforeground=text_color,
                             relief=tk.RAISED, bd=2,
                             wraplength=250, height=2,
-                            command=lambda exe=tool["exe"], set_cwd=tool.get("set_cwd", True):
-                                    self.run_tool(exe, set_cwd))
+                            command=lambda t=tool: self.run_tool(t))
             btn.pack(fill=tk.X, pady=(5, 5))
 
             desc = tool.get("description", "")
@@ -181,14 +179,36 @@ class Launcher:
                 col = 0
                 row += 1
 
-    def run_tool(self, exe_name, set_cwd=True):
+    def run_tool(self, tool_config):
+        exe_name = tool_config["exe"]
         rel_path = os.path.join(TOOLS_DIR, exe_name)
         exe_path = os.path.abspath(rel_path)
-        work_dir = os.path.dirname(exe_path) if set_cwd else None
-
         if not os.path.exists(exe_path):
             messagebox.showerror("錯誤", f"找不到程式：{exe_path}")
             return
+
+        if tool_config.get("start_method") == "startfile":
+            last_time = self.startfile_records.get(exe_name, 0)
+            now = time.time()
+            if now - last_time < 5:
+                messagebox.showinfo("提示", f"工具 '{exe_name}' 可能正在啟動，請稍後再試。")
+                return
+            self.startfile_records[exe_name] = now
+
+            self.progress.pack(pady=(0, 5))
+            self.progress['value'] = 0
+            self.root.update()
+            self._animate_startfile_progress()
+
+            try:
+                os.startfile(exe_path)
+            except Exception as e:
+                messagebox.showerror("啟動失敗", str(e))
+                self.progress.pack_forget()
+            return
+
+        set_cwd = tool_config.get("set_cwd", True)
+        work_dir = os.path.dirname(exe_path) if set_cwd else None
 
         existing = self.processes.get(exe_name)
         if existing is not None and existing.poll() is None:
@@ -208,6 +228,16 @@ class Launcher:
             return
 
         self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
+
+    def _animate_startfile_progress(self):
+        current = self.progress['value']
+        if current < 100:
+            new_val = min(current + 20, 100)
+            self.progress['value'] = new_val
+            self.root.update()
+            self.root.after(50, self._animate_startfile_progress)
+        else:
+            self.root.after(200, self.progress.pack_forget)
 
     def _check_launch_error(self, exe_name, proc):
         if proc.poll() is not None:
