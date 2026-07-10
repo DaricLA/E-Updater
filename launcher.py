@@ -45,7 +45,8 @@ def load_tools():
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
         if os.path.exists(exe_path):
             tool.setdefault("set_cwd", True)
-            tool.setdefault("start_method", "subprocess")
+            tool.setdefault("shell", False)
+            tool.setdefault("clean_env", False)   # 默认不清除环境变量
             valid_tools.append(tool)
         else:
             print(f"警告：工具 '{tool.get('name', '未知')}' 的程式檔 {exe_path} 不存在，將跳過。")
@@ -64,7 +65,6 @@ class Launcher:
 
         self.tools = load_tools()
         self.processes = {}
-        self.startfile_records = {}
 
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
@@ -187,28 +187,17 @@ class Launcher:
             messagebox.showerror("錯誤", f"找不到程式：{exe_path}")
             return
 
-        if tool_config.get("start_method") == "startfile":
-            last_time = self.startfile_records.get(exe_name, 0)
-            now = time.time()
-            if now - last_time < 5:
-                messagebox.showinfo("提示", f"工具 '{exe_name}' 可能正在啟動，請稍後再試。")
-                return
-            self.startfile_records[exe_name] = now
-
-            self.progress.pack(pady=(0, 5))
-            self.progress['value'] = 0
-            self.root.update()
-            self._animate_startfile_progress()
-
-            try:
-                os.startfile(exe_path)
-            except Exception as e:
-                messagebox.showerror("啟動失敗", str(e))
-                self.progress.pack_forget()
-            return
-
         set_cwd = tool_config.get("set_cwd", True)
+        use_shell = tool_config.get("shell", False)
+        clean_env = tool_config.get("clean_env", False)
         work_dir = os.path.dirname(exe_path) if set_cwd else None
+
+        # 环境变量处理
+        env = os.environ.copy()
+        if clean_env:
+            # 移除干扰项，让子进程使用自己的 Python 环境
+            for key in ["PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "VIRTUAL_ENV"]:
+                env.pop(key, None)
 
         existing = self.processes.get(exe_name)
         if existing is not None and existing.poll() is None:
@@ -220,7 +209,10 @@ class Launcher:
         self.root.update()
 
         try:
-            proc = subprocess.Popen([exe_path], cwd=work_dir)
+            if use_shell:
+                proc = subprocess.Popen(f'"{exe_path}"', shell=True, cwd=work_dir, env=env)
+            else:
+                proc = subprocess.Popen([exe_path], cwd=work_dir, env=env)
             self.processes[exe_name] = proc
         except Exception as e:
             messagebox.showerror("啟動失敗", str(e))
@@ -228,16 +220,6 @@ class Launcher:
             return
 
         self.root.after(300, lambda: self._check_launch_error(exe_name, proc))
-
-    def _animate_startfile_progress(self):
-        current = self.progress['value']
-        if current < 100:
-            new_val = min(current + 20, 100)
-            self.progress['value'] = new_val
-            self.root.update()
-            self.root.after(50, self._animate_startfile_progress)
-        else:
-            self.root.after(200, self.progress.pack_forget)
 
     def _check_launch_error(self, exe_name, proc):
         if proc.poll() is not None:
