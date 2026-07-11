@@ -114,7 +114,7 @@ class WaferMapApp:
         self.page1.pack_forget()
         self.page2.pack(fill="both", expand=True)
 
-    # ---------- XML 加载与矩阵构建 ----------
+    # ---------- XML 加载与矩阵构建 (使用通配符命名空间) ----------
     def load_xml(self):
         path = filedialog.askopenfilename(
             title="選擇 Wafer Map XML 文件",
@@ -130,19 +130,13 @@ class WaferMapApp:
             messagebox.showerror("錯誤", f"無法解析 XML 文件:\n{e}")
             return
 
-        # 命名空间
-        ns = {"ns": "http://www.1234.com"}
-        # 查找 Device 元素
-        device = root_elem.find("ns:Device", ns) if ns else root_elem.find("Device")
-        if device is None:
-            # 尝试无命名空间
-            device = root_elem.find("Device")
-            ns = {}
+        # 使用通配符 {*} 匹配任意命名空间下的 <Device>
+        device = root_elem.find(".//{*}Device")
         if device is None:
             messagebox.showerror("錯誤", "找不到 <Device> 節點")
             return
 
-        # 提取表头属性
+        # 提取表头属性（属性不受命名空间影响）
         self.wafer_info = {
             "WaferId": device.get("WaferId", ""),
             "LotId": device.get("LotId", ""),
@@ -160,30 +154,29 @@ class WaferMapApp:
             messagebox.showerror("錯誤", "Columns 或 Rows 屬性無效")
             return
 
-        # 提取 Data 下的 Row 文本
-        data = device.find("ns:Data", ns) if ns else device.find("Data")
+        # 查找 <Data> 节点
+        data = device.find(".//{*}Data")
         if data is None:
             messagebox.showerror("錯誤", "找不到 <Data> 節點")
             return
 
-        rows_elem = data.findall("ns:Row", ns) if ns else data.findall("Row")
+        # 查找所有 <Row> 节点
+        rows_elem = data.findall(".//{*}Row")
         raw_lines = []
         for row in rows_elem:
             text = row.text
             if text:
-                # 去除首尾空白（含空格、换行）
                 text = text.strip()
                 if text:
                     raw_lines.append(text)
+
         if len(raw_lines) != self.rows:
-            # 警告但继续，以实际读取行为准
             print(f"警告: XML 中有 {len(raw_lines)} 行，但 Rows 属性为 {self.rows}")
 
         # 构建规整矩阵：补齐或截断到 Columns 长度
         null_bin = self.wafer_info["NullBin"]
         self.matrix = []
         for line in raw_lines:
-            # 如果长度不足，用 NullBin 填充右侧；超出则截断
             if len(line) < self.cols:
                 line = line.ljust(self.cols, null_bin)
             else:
