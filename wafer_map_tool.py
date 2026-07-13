@@ -32,11 +32,13 @@ class WaferMapApp:
         self.bin_colors = {}
         self.unique_bins = []
 
-        # 缩放控制
-        self.zoom_scale = 1.0        # 当前缩放倍数
-        self.base_cell_size = 12     # 基础单元格像素（缩放系数=1时）
-        self.max_zoom = 5.0
+        # 缩放控制 (范围 30% ~ 300%，步进 5%)
+        self.zoom_scale = 1.0
         self.min_zoom = 0.3
+        self.max_zoom = 3.0
+        self.zoom_step = 0.05
+        self.base_cell_height = 12       # 基础高度
+        self.base_cell_width = int(12 * 1.1)  # 基础宽度 = 1.1 * 高度
 
         # 页面容器
         self.page1 = tk.Frame(self.root)
@@ -112,6 +114,9 @@ class WaferMapApp:
                                      orient="horizontal", variable=self.zoom_scale_var,
                                      command=self.on_zoom_slider)
         self.zoom_slider.pack(side="left", fill="x", expand=True, padx=5)
+        # 设置滑块分辨率
+        self.zoom_slider.configure(value=1.0)
+        # 注：ttk.Scale 没有直接的 resolution 参数，但通过变量 change 可控制，我们后续在回调中处理
         tk.Button(zoom_bar, text="+", command=self.zoom_in,
                   font=("微軟雅黑", 10, "bold"), width=3).pack(side="left", padx=2)
         self.zoom_label = tk.Label(zoom_bar, text="100%", font=FONT, width=5)
@@ -340,40 +345,44 @@ class WaferMapApp:
         self.info_text.insert("1.0", self.wafer_info_text)
         self.info_text.config(state="disabled")
 
-    # ==================== 矩阵绘制 (支持缩放) ====================
+    # ==================== 矩阵绘制 (支持缩放，宽高比1.1:1) ====================
     def get_cell_size(self):
-        """返回当前缩放后的单元格大小 (至少为2)"""
-        size = int(self.base_cell_size * self.zoom_scale)
-        return max(size, 2)
+        """返回缩放后的单元格宽度和高度"""
+        w = int(self.base_cell_width * self.zoom_scale)
+        h = int(self.base_cell_height * self.zoom_scale)
+        # 最小尺寸保证可见
+        w = max(w, 2)
+        h = max(h, 2)
+        return w, h
 
     def draw_matrix(self):
         self.canvas.delete("all")
         if not self.matrix:
             return
 
-        cell = self.get_cell_size()
+        cell_w, cell_h = self.get_cell_size()
         rows = self.rows
         cols = self.cols
-        w = cols * cell
-        h = rows * cell
-        self.canvas.config(scrollregion=(0, 0, w, h))
+        total_w = cols * cell_w
+        total_h = rows * cell_h
+        self.canvas.config(scrollregion=(0, 0, total_w, total_h))
 
-        font_size = max(6, int(cell * 0.65))
-        # 根据单元格大小微调字体
+        # 根据较小的一边决定字体大小
+        font_size = max(6, int(min(cell_w, cell_h) * 0.65))
+
         for r in range(rows):
             for c in range(cols):
-                x1 = c * cell
-                y1 = r * cell
-                x2 = x1 + cell
-                y2 = y1 + cell
+                x1 = c * cell_w
+                y1 = r * cell_h
+                x2 = x1 + cell_w
+                y2 = y1 + cell_h
                 char = self.matrix[r][c]
                 color = self.bin_colors.get(char, "#FFFFFF")
                 self.canvas.create_rectangle(x1, y1, x2, y2,
                                              fill=color, outline="#D0D0D0", width=1)
-                self.canvas.create_text(x1 + cell/2, y1 + cell/2,
+                self.canvas.create_text(x1 + cell_w/2, y1 + cell_h/2,
                                         text=char, font=("微軟雅黑", font_size),
                                         fill="black")
-
         self.update_zoom_label()
 
     def update_zoom_label(self):
@@ -382,19 +391,28 @@ class WaferMapApp:
         self.zoom_scale_var.set(self.zoom_scale)
 
     def zoom_in(self):
-        if self.zoom_scale < self.max_zoom:
-            self.zoom_scale = min(self.max_zoom, round(self.zoom_scale + 0.2, 1))
+        new_scale = round(self.zoom_scale + self.zoom_step, 2)
+        if new_scale <= self.max_zoom:
+            self.zoom_scale = new_scale
             self.draw_matrix()
 
     def zoom_out(self):
-        if self.zoom_scale > self.min_zoom:
-            self.zoom_scale = max(self.min_zoom, round(self.zoom_scale - 0.2, 1))
+        new_scale = round(self.zoom_scale - self.zoom_step, 2)
+        if new_scale >= self.min_zoom:
+            self.zoom_scale = new_scale
             self.draw_matrix()
 
     def on_zoom_slider(self, event=None):
-        val = self.zoom_scale_var.get()
-        self.zoom_scale = round(val, 1)
-        self.draw_matrix()
+        # 将滑块值取到最近的步进值
+        raw = self.zoom_scale_var.get()
+        steps = round(raw / self.zoom_step)
+        val = steps * self.zoom_step
+        val = max(self.min_zoom, min(self.max_zoom, val))
+        if val != self.zoom_scale:
+            self.zoom_scale = val
+            self.draw_matrix()
+        else:
+            self.zoom_scale_var.set(self.zoom_scale)
 
     # ==================== 颜色规则管理 ====================
     def add_color_rule(self):
@@ -511,7 +529,6 @@ class WaferMapApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    # 全局默认字体（未使用 ttk 的部分）
     root.option_add("*Font", FONT)
     app = WaferMapApp(root)
     root.mainloop()
