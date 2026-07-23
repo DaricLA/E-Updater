@@ -31,15 +31,25 @@ def parse_color(value, default):
     return default
 
 def load_tools():
+    """返回 (工具列表, 版本号字符串)"""
     if not os.path.exists(TOOLS_CONFIG):
         messagebox.showerror("錯誤", f"找不到設定檔 {TOOLS_CONFIG}，請確認檔案是否存在。")
-        return []
+        return [], ""
     try:
         with open(TOOLS_CONFIG, "r", encoding="utf-8") as f:
-            tools = json.load(f)
+            config = json.load(f)
     except Exception as e:
         messagebox.showerror("錯誤", f"設定檔格式錯誤：{e}")
-        return []
+        return [], ""
+
+    # 兼容旧版数组格式
+    if isinstance(config, list):
+        tools = config
+        version = ""
+    else:
+        tools = config.get("tools", [])
+        version = config.get("version", "")
+
     valid_tools = []
     for tool in tools:
         exe_path = os.path.join(TOOLS_DIR, tool.get("exe", ""))
@@ -53,21 +63,27 @@ def load_tools():
             print(f"警告：工具 '{tool.get('name', '未知')}' 的程式檔 {exe_path} 不存在，將跳過。")
     if not valid_tools:
         messagebox.showinfo("提示", "沒有可用的工具，請檢查 Tools 資料夾和設定檔。")
-    return valid_tools
+    return valid_tools, version
 
 class Launcher:
     def __init__(self, root):
         self.root = root
-        self.root.title("VSAPE工具箱")
+        self.tools, self.version = load_tools()
+
+        # 设置标题（含版本号）
+        title = "VSAPE工具箱"
+        if self.version:
+            title += f" {self.version}"
+        self.root.title(title)
         self.root.configure(bg="#f5f5f5")
 
         default_font = ("微软雅黑", 10)
         self.root.option_add("*Font", default_font)
 
-        self.tools = load_tools()
-        self.processes = {}           # subprocess 模式用
-        self.launch_records = {}      # startfile / explorer 模式防重复
+        self.processes = {}
+        self.launch_records = {}
 
+        # 标题栏
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
         ttk.Label(title_frame, text="選擇要啟動的工具",
@@ -75,6 +91,7 @@ class Launcher:
 
         self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
 
+        # 滚动区域
         canvas_frame = ttk.Frame(root)
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
 
@@ -189,7 +206,7 @@ class Launcher:
             messagebox.showerror("錯誤", f"找不到程式：{target_path}")
             return
 
-        # ---------- explorer 启动（完全模拟资源管理器双击） ----------
+        # explorer 启动
         if tool_config.get("start_method") == "explorer":
             last_time = self.launch_records.get(exe_name, 0)
             now = time.time()
@@ -204,14 +221,13 @@ class Launcher:
             self._animate_simple_progress()
 
             try:
-                # explorer.exe 启动程序，系统负责环境
                 subprocess.Popen(['explorer.exe', target_path])
             except Exception as e:
                 messagebox.showerror("啟動失敗", str(e))
                 self.progress.pack_forget()
             return
 
-        # ---------- startfile 模式 ----------
+        # startfile 启动
         if tool_config.get("start_method") == "startfile":
             last_time = self.launch_records.get(exe_name, 0)
             now = time.time()
@@ -232,7 +248,7 @@ class Launcher:
                 self.progress.pack_forget()
             return
 
-        # ---------- 标准 subprocess 模式 ----------
+        # subprocess 启动
         set_cwd = tool_config.get("set_cwd", True)
         use_shell = tool_config.get("shell", False)
         clean_env = tool_config.get("clean_env", False)
