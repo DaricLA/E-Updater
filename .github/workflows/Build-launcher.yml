@@ -20,11 +20,10 @@ jobs:
           pip install pyinstaller
           pyinstaller --version
 
-      - name: Build Launcher with Splash & Progress
+      - name: Build Launcher with Splash
         run: |
           pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" `
             --splash "splash.png" `
-            --splash-progressbar `
             launcher.py
 
       - name: Upload artifact
