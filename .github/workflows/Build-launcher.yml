@@ -20,9 +20,10 @@ jobs:
           pip install pyinstaller
           pyinstaller --version
 
-      - name: Build Launcher with Splash
+      - name: Build Launcher with Splash and Icon
         run: |
           pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" `
+            --icon "VSAPE.ico" `
             --splash "splash.png" `
             launcher.py
 
