@@ -15,19 +15,16 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install pyinstaller
-
-      - name: Verify icon file exists
         run: |
-          if (Test-Path "VSAPE.ico") {
-            Write-Host "Icon found, size: $((Get-Item VSAPE.ico).Length) bytes"
-          } else {
-            Write-Error "VSAPE.ico not found in root!"
-            exit 1
-          }
+          python -m pip install --upgrade pip
+          pip install pyinstaller
 
-      - name: Build Launcher with icon
-        run: pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" --icon=VSAPE.ico launcher.py
+      - name: Build Launcher with Splash
+        run: |
+          pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" `
+            --splash "splash.png" `
+            --splash-progressbar `
+            launcher.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
