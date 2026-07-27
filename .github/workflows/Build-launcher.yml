@@ -17,7 +17,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller>=4.10   # 确保版本支持 --splash-progressbar
+          pip uninstall -y pyinstaller
+          pip install pyinstaller==5.13.2
+          pyinstaller --version
 
       - name: Build Launcher with Splash & Progress
         run: |
