@@ -1,59 +1,72 @@
 import json
 import os
-import socket
-import subprocess
 import sys
-import threading
 import time
+import subprocess
+import ctypes
+import ctypes.wintypes
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-# ---------- 单实例管理 ----------
-SINGLE_INSTANCE_PORT = 54321          # 锁端口，可自定义
-SINGLE_INSTANCE_HOST = "127.0.0.1"
+# ---------- 单实例控制（命名互斥体 + 窗口查找） ----------
+MUTEX_NAME = "Global\\VSAPE_Toolbox_Launcher_Mutex"
+WM_ACTIVATE = 0x8000 + 1  # 自定义消息，用于激活窗口
 
-def notify_existing_instance():
-    """向已有实例发送激活消息"""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        sock.connect((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
-        sock.send(b'activate')
-        sock.close()
-    except Exception:
-        pass
+def activate_previous_instance():
+    """查找已有窗口并激活"""
+    # 首先尝试通过互斥体获取的窗口句柄（更可靠的方法见下，但我们先用查找窗口标题）
+    # 我们的窗口标题是 "VSAPE工具箱" 可能附带版本号，因此用 FindWindowW 通配符匹配？FindWindow不支持通配符。
+    # 简单方法：枚举所有顶层窗口，找到标题以 "VSAPE工具箱" 开头的第一个窗口，然后激活它。
+    hwnd = None
+    # 枚举窗口回调
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+    found_windows = []
 
-def single_instance_listener(root):
-    """在后台线程中监听新实例的连接，收到后激活主窗口"""
-    def listen():
-        while True:
-            try:
-                conn, _ = server_socket.accept()
-                data = conn.recv(1024)
-                conn.close()
-                if data == b'activate':
-                    root.after(0, activate_window)
-            except Exception:
-                break
-
-    def activate_window():
-        root.deiconify()
-        root.lift()
-        root.focus_force()
-
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        server_socket.bind((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
-        server_socket.listen(1)
-        # 启动监听线程
-        threading.Thread(target=listen, daemon=True).start()
+    def enum_callback(hwnd, lParam):
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return True
+        buff = ctypes.create_unicode_buffer(length + 1)
+        ctypes.windll.user32.GetWindowTextW(hwnd, buff, length + 1)
+        title = buff.value
+        if title.startswith("VSAPE工具箱"):
+            # 检查是否可见（不是托盘区域等）
+            if ctypes.windll.user32.IsWindowVisible(hwnd):
+                found_windows.append(hwnd)
+                return False  # 停止枚举
         return True
-    except socket.error:
-        # 端口已被占用，说明已有实例
-        return False
 
-# ---------- 原有代码 ----------
+    cb = WNDENUMPROC(enum_callback)
+    ctypes.windll.user32.EnumWindows(cb, 0)
+    if found_windows:
+        hwnd = found_windows[0]
+        # 显示窗口（如果最小化）
+        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+        return True
+    return False
+
+def check_instance():
+    """检查是否已有实例，如有则激活并返回 False，否则返回 True 并持有互斥体"""
+    # 尝试创建互斥体
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    if mutex == 0:
+        # 创建失败，致命错误，但忽略
+        return True
+    last_error = ctypes.windll.kernel32.GetLastError()
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        # 已有实例
+        ctypes.windll.kernel32.CloseHandle(mutex)
+        # 激活旧窗口
+        activate_previous_instance()
+        return False
+    # 新实例，持有互斥体（当进程退出时系统会自动释放）
+    # 我们保存互斥体句柄以便稍后显式关闭（但非必须）
+    return True
+
+# 注意：mutex 句柄需保持有效，所以我们将它设为全局或传递给主窗口类（简单起见，在 __main__ 中保存引用）
+
+# ---------- 原有启动器代码 ----------
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -373,32 +386,10 @@ class Launcher:
             self.processes.pop(exe_name, None)
 
 if __name__ == "__main__":
-    # 单实例控制
-    # 先尝试绑定端口，若失败则通知已有实例并退出
-    test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        test_socket.bind((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
-        test_socket.listen(1)
-        # 端口绑定成功，说明是第一个实例
-        root = tk.Tk()
-        app = Launcher(root)
-
-        # 在后台线程监听新实例的通知
-        def listen_for_activate():
-            while True:
-                try:
-                    conn, _ = test_socket.accept()
-                    data = conn.recv(1024)
-                    conn.close()
-                    if data == b'activate':
-                        root.after(0, lambda: (root.deiconify(), root.lift(), root.focus_force()))
-                except:
-                    break
-        threading.Thread(target=listen_for_activate, daemon=True).start()
-
-        root.mainloop()
-    except socket.error:
-        # 端口被占用，通知已有实例并退出
-        notify_existing_instance()
+    # 单实例检查
+    if not check_instance():
         sys.exit(0)
+
+    root = tk.Tk()
+    app = Launcher(root)
+    root.mainloop()
