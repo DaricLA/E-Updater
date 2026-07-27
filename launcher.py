@@ -38,7 +38,7 @@ def check_instance():
         return False
     return True
 
-# ========== 原有启动器（无 Splash） ==========
+# ========== 启动器配置 ==========
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -357,11 +357,21 @@ class Launcher:
         if proc and proc.poll() is not None:
             self.processes.pop(exe_name, None)
 
-# ========== 程序入口 ==========
+# ========== 程序入口（包含 Splash 关闭逻辑） ==========
 if __name__ == "__main__":
     if not check_instance():
         sys.exit(0)
 
     root = tk.Tk()
+    root.withdraw()          # 暂时隐藏主窗口，等待 Splash 关闭后再显示
     app = Launcher(root)
+
+    # 关闭 PyInstaller 启动画面（如果存在）
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except ImportError:
+        pass
+
+    root.deiconify()         # 显示主窗口
     root.mainloop()
