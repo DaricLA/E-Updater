@@ -5,7 +5,6 @@ import time
 import subprocess
 import ctypes
 import ctypes.wintypes
-import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -13,7 +12,6 @@ from tkinter import messagebox, ttk
 MUTEX_NAME = "Global\\VSAPE_Toolbox_Launcher_Mutex"
 
 def activate_previous_instance():
-    """查找已有窗口并激活"""
     def enum_callback(hwnd, lParam):
         length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
         if length == 0:
@@ -23,61 +21,24 @@ def activate_previous_instance():
         title = buff.value
         if title.startswith("VSAPE工具箱"):
             if ctypes.windll.user32.IsWindowVisible(hwnd):
-                # 保存窗口句柄
-                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                ctypes.windll.user32.ShowWindow(hwnd, 9)
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
-                return False  # 停止枚举
+                return False
         return True
-
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
-    cb = WNDENUMPROC(enum_callback)
-    ctypes.windll.user32.EnumWindows(cb, 0)
+    ctypes.windll.user32.EnumWindows(WNDENUMPROC(enum_callback), 0)
 
 def check_instance():
-    """检查是否已有实例，如有则激活并返回 False，否则返回 True"""
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
     if mutex == 0:
         return True
-    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    if ctypes.windll.kernel32.GetLastError() == 183:
         ctypes.windll.kernel32.CloseHandle(mutex)
         activate_previous_instance()
         return False
-    # 新实例，保留互斥体句柄（进程退出时系统自动释放）
     return True
 
-# ========== Splash 窗口 ==========
-class Splash:
-    def __init__(self):
-        self.root = tk.Toplevel()
-        self.root.overrideredirect(True)          # 无标题栏
-        self.root.attributes('-topmost', True)    # 置顶
-        self.root.geometry("300x100+%d+%d" % self._center())
-        self.root.configure(bg="white")
-
-        # 标题
-        tk.Label(self.root, text="VSAPE工具箱 啟動中...", font=("微软雅黑", 12, "bold"),
-                 bg="white").pack(pady=(20, 5))
-        # 进度条（不确定模式）
-        self.progress = ttk.Progressbar(self.root, mode='indeterminate', length=250)
-        self.progress.pack(pady=(0, 10))
-        self.progress.start()
-
-        self.root.update()
-
-    def _center(self):
-        w, h = 300, 100
-        sw = self.root.winfo_screenwidth()
-        sh = self.root.winfo_screenheight()
-        return (sw - w) // 2, (sh - h) // 2
-
-    def close(self):
-        if self.root:
-            try:
-                self.root.destroy()
-            except:
-                pass
-
-# ========== 主启动器 ==========
+# ========== 原有启动器（无 Splash） ==========
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -398,32 +359,9 @@ class Launcher:
 
 # ========== 程序入口 ==========
 if __name__ == "__main__":
-    # 单实例检查
     if not check_instance():
         sys.exit(0)
 
-    # 启动 Splash（子线程）
-    splash = None
-    def run_splash():
-        global splash
-        splash = Splash()
-        # 必须启动子线程的事件循环，否则进度条不会动
-        splash.root.mainloop()
-
-    t = threading.Thread(target=run_splash, daemon=True)
-    t.start()
-
-    # 主线程初始化主窗口
-    try:
-        root = tk.Tk()
-        root.withdraw()  # 先隐藏，等 splash 关闭后再显示
-        app = Launcher(root)
-        root.deiconify()  # 显示主窗口
-    finally:
-        # 关闭 Splash（线程安全）
-        if splash:
-            splash.root.after(0, splash.close)
-        # 等待线程结束（最多 2 秒）
-        t.join(timeout=2)
-
+    root = tk.Tk()
+    app = Launcher(root)
     root.mainloop()
