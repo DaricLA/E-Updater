@@ -1,10 +1,59 @@
 import json
 import os
+import socket
 import subprocess
+import sys
+import threading
 import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+# ---------- 单实例管理 ----------
+SINGLE_INSTANCE_PORT = 54321          # 锁端口，可自定义
+SINGLE_INSTANCE_HOST = "127.0.0.1"
+
+def notify_existing_instance():
+    """向已有实例发送激活消息"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
+        sock.send(b'activate')
+        sock.close()
+    except Exception:
+        pass
+
+def single_instance_listener(root):
+    """在后台线程中监听新实例的连接，收到后激活主窗口"""
+    def listen():
+        while True:
+            try:
+                conn, _ = server_socket.accept()
+                data = conn.recv(1024)
+                conn.close()
+                if data == b'activate':
+                    root.after(0, activate_window)
+            except Exception:
+                break
+
+    def activate_window():
+        root.deiconify()
+        root.lift()
+        root.focus_force()
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        server_socket.bind((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
+        server_socket.listen(1)
+        # 启动监听线程
+        threading.Thread(target=listen, daemon=True).start()
+        return True
+    except socket.error:
+        # 端口已被占用，说明已有实例
+        return False
+
+# ---------- 原有代码 ----------
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -31,7 +80,6 @@ def parse_color(value, default):
     return default
 
 def load_tools():
-    """返回 (工具列表, 版本号字符串)"""
     if not os.path.exists(TOOLS_CONFIG):
         messagebox.showerror("錯誤", f"找不到設定檔 {TOOLS_CONFIG}，請確認檔案是否存在。")
         return [], ""
@@ -42,7 +90,6 @@ def load_tools():
         messagebox.showerror("錯誤", f"設定檔格式錯誤：{e}")
         return [], ""
 
-    # 兼容旧版数组格式
     if isinstance(config, list):
         tools = config
         version = ""
@@ -70,7 +117,6 @@ class Launcher:
         self.root = root
         self.tools, self.version = load_tools()
 
-        # 设置标题（含版本号）
         title = "VSAPE工具箱"
         if self.version:
             title += f" {self.version}"
@@ -83,7 +129,6 @@ class Launcher:
         self.processes = {}
         self.launch_records = {}
 
-        # 标题栏
         title_frame = ttk.Frame(root)
         title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
         ttk.Label(title_frame, text="選擇要啟動的工具",
@@ -91,7 +136,6 @@ class Launcher:
 
         self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
 
-        # 滚动区域
         canvas_frame = ttk.Frame(root)
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
 
@@ -329,6 +373,32 @@ class Launcher:
             self.processes.pop(exe_name, None)
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = Launcher(root)
-    root.mainloop()
+    # 单实例控制
+    # 先尝试绑定端口，若失败则通知已有实例并退出
+    test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    test_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        test_socket.bind((SINGLE_INSTANCE_HOST, SINGLE_INSTANCE_PORT))
+        test_socket.listen(1)
+        # 端口绑定成功，说明是第一个实例
+        root = tk.Tk()
+        app = Launcher(root)
+
+        # 在后台线程监听新实例的通知
+        def listen_for_activate():
+            while True:
+                try:
+                    conn, _ = test_socket.accept()
+                    data = conn.recv(1024)
+                    conn.close()
+                    if data == b'activate':
+                        root.after(0, lambda: (root.deiconify(), root.lift(), root.focus_force()))
+                except:
+                    break
+        threading.Thread(target=listen_for_activate, daemon=True).start()
+
+        root.mainloop()
+    except socket.error:
+        # 端口被占用，通知已有实例并退出
+        notify_existing_instance()
+        sys.exit(0)
