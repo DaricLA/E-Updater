@@ -6,7 +6,9 @@ import subprocess
 import ctypes
 import ctypes.wintypes
 import tkinter as tk
-from tkinter import messagebox, ttk
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
+from tkinter import messagebox
 
 # ========== 单实例控制 ==========
 MUTEX_NAME = "Global\\VSAPE_Toolbox_Launcher_Mutex"
@@ -38,7 +40,7 @@ def check_instance():
         return False
     return True
 
-# ========== 启动器配置 ==========
+# ========== 配置与启动器 ==========
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -114,19 +116,23 @@ class Launcher:
         self.processes = {}
         self.launch_records = {}
 
-        title_frame = ttk.Frame(root)
-        title_frame.pack(fill=tk.X, padx=15, pady=(15, 5))
-        ttk.Label(title_frame, text="選擇要啟動的工具",
-                  font=("微软雅黑", 14, "bold")).pack()
+        # 标题栏
+        title_frame = tb.Frame(root, padding=(15, 15, 15, 5))
+        title_frame.pack(fill=X)
+        tb.Label(title_frame, text="選擇要啟動的工具",
+                 font=("微软雅黑", 14, "bold")).pack()
 
-        self.progress = ttk.Progressbar(root, mode='determinate', length=400, maximum=100)
+        # 进度条（启动子工具时使用）
+        self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
+        # 初始不显示
 
-        canvas_frame = ttk.Frame(root)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(5, 10))
+        # 滚动区域
+        canvas_frame = tb.Frame(root)
+        canvas_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))
 
         self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
-        self.scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.scrollbar = tb.Scrollbar(canvas_frame, orient=VERTICAL, command=self.canvas.yview)
+        self.scrollable_frame = tb.Frame(self.canvas)
 
         self.scrollable_frame.bind(
             "<Configure>",
@@ -135,10 +141,8 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.canvas.bind("<Configure>", self._on_canvas_configure)
-
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+        self.scrollbar.pack(side=RIGHT, fill=Y)
 
         self.canvas.bind("<Enter>", self._bind_mousewheel)
         self.canvas.bind("<Leave>", self._unbind_mousewheel)
@@ -146,15 +150,20 @@ class Launcher:
         if self.tools:
             self.create_tool_grid()
         else:
-            ttk.Label(self.scrollable_frame, text="無可用工具",
-                      font=("微软雅黑", 12)).pack(pady=50)
+            tb.Label(self.scrollable_frame, text="無可用工具",
+                     font=("微软雅黑", 12)).pack(pady=50)
 
         self.root.update_idletasks()
         self._adjust_window_size()
 
-    def _on_canvas_configure(self, event):
-        canvas_width = event.width
-        self.canvas.itemconfig(self.canvas_window, width=canvas_width)
+    def _bind_mousewheel(self, event):
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def _unbind_mousewheel(self, event):
+        self.canvas.unbind_all("<MouseWheel>")
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _adjust_window_size(self):
         self.scrollable_frame.update_idletasks()
@@ -181,46 +190,42 @@ class Launcher:
         self.root.geometry(f"{win_width}x{win_height}")
         self.root.resizable(False, False)
 
-    def _bind_mousewheel(self, event):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _unbind_mousewheel(self, event):
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-
     def create_tool_grid(self):
+        style = self.root.style
         self.scrollable_frame.columnconfigure(0, weight=1, uniform="col")
         self.scrollable_frame.columnconfigure(1, weight=1, uniform="col")
 
         row = 0
         col = 0
-        for tool in self.tools:
-            card = tk.Frame(self.scrollable_frame, bg="#f0f0f0", bd=1, relief=tk.RIDGE,
-                            padx=10, pady=10)
+        for idx, tool in enumerate(self.tools):
+            # 圆角卡片容器 (tb.LabelFrame with bootstyle)
+            card = tb.LabelFrame(self.scrollable_frame, text="", padding=10, bootstyle="info")
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
 
-            btn_color = parse_color(tool.get("button_color"), DEFAULT_BUTTON_COLOR)
-            text_color = parse_color(tool.get("text_color"), DEFAULT_TEXT_COLOR)
-            btn_font_size = tool.get("font_size", DEFAULT_FONT_SIZE)
+            # 自定义按钮样式（保留颜色和字体）
+            style_name = f"Tool{idx}.TButton"
+            bg = parse_color(tool.get("button_color"), DEFAULT_BUTTON_COLOR)
+            fg = parse_color(tool.get("text_color"), DEFAULT_TEXT_COLOR)
+            font_size = tool.get("font_size", DEFAULT_FONT_SIZE)
 
-            btn = tk.Button(card, text=tool["name"],
-                            font=("微软雅黑", btn_font_size, "bold"),
-                            bg=btn_color, fg=text_color,
-                            activebackground=btn_color, activeforeground=text_color,
-                            relief=tk.RAISED, bd=2,
-                            wraplength=250, height=2,
+            style.configure(style_name,
+                            background=bg,
+                            foreground=fg,
+                            font=("微软雅黑", font_size, "bold"),
+                            borderwidth=2,
+                            focusthickness=2,
+                            focuscolor=style.colors.get('primary'))
+
+            # 圆角按钮
+            btn = tb.Button(card, text=tool["name"], style=style_name,
                             command=lambda t=tool: self.run_tool(t))
-            btn.pack(fill=tk.X, pady=(5, 5))
+            btn.pack(fill=X, pady=(5, 5))
 
+            # 描述文本
             desc = tool.get("description", "")
             if desc:
-                desc_label = tk.Label(card, text=desc,
-                                      font=("微软雅黑", 9), fg="gray",
-                                      bg="#f0f0f0", wraplength=250,
-                                      justify="left")
-                desc_label.pack(fill=tk.X, pady=(0, 5))
+                desc_label = tb.Label(card, text=desc, font=("微软雅黑", 9), foreground="gray")
+                desc_label.pack(fill=X, pady=(0, 5))
 
             col += 1
             if col > 1:
@@ -357,13 +362,14 @@ class Launcher:
         if proc and proc.poll() is not None:
             self.processes.pop(exe_name, None)
 
-# ========== 程序入口（包含 Splash 关闭逻辑） ==========
+# ========== 程序入口 ==========
 if __name__ == "__main__":
     if not check_instance():
         sys.exit(0)
 
-    root = tk.Tk()
-    root.withdraw()          # 暂时隐藏主窗口，等待 Splash 关闭后再显示
+    # 创建 ttkbootstrap 根窗口，主题 flatly
+    root = tb.Window(themename="flatly")
+    root.withdraw()
     app = Launcher(root)
 
     # 关闭 PyInstaller 启动画面（如果存在）
@@ -373,5 +379,5 @@ if __name__ == "__main__":
     except ImportError:
         pass
 
-    root.deiconify()         # 显示主窗口
+    root.deiconify()
     root.mainloop()
