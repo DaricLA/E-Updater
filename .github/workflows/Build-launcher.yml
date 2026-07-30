@@ -25,6 +25,7 @@ jobs:
           pyinstaller --onefile --windowed --clean --name "VSAPE工具箱" `
             --icon "VSAPE.ico" `
             --splash "splash.png" `
+            --collect-all ttkbootstrap `
             launcher.py
 
       - name: Upload artifact
