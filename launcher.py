@@ -40,7 +40,7 @@ def check_instance():
         return False
     return True
 
-# ========== 配置与启动器 ==========
+# ========== 启动器配置 ==========
 TOOLS_CONFIG = "tools.json"
 TOOLS_DIR = "Tools"
 
@@ -115,6 +115,7 @@ class Launcher:
 
         self.processes = {}
         self.launch_records = {}
+        self.desc_labels = []
 
         # 标题栏
         title_frame = tb.Frame(root, padding=(15, 15, 15, 5))
@@ -122,16 +123,15 @@ class Launcher:
         tb.Label(title_frame, text="選擇要啟動的工具",
                  font=("微软雅黑", 14, "bold")).pack()
 
-        # 进度条（启动子工具时使用）
+        # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
-        # 初始不显示
 
-        # 滚动区域
+        # 滚动区域 —— 关键修改：左右对称，且滚轮全局生效
         canvas_frame = tb.Frame(root)
-        canvas_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))
+        canvas_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))   # 左右边距相同
 
         self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
-        self.scrollbar = tb.Scrollbar(canvas_frame, orient=VERTICAL, command=self.canvas.yview)
+        self.scrollbar = tb.Scrollbar(canvas_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
         self.scrollable_frame = tb.Frame(self.canvas)
 
         self.scrollable_frame.bind(
@@ -141,11 +141,13 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+        # 滚动条紧贴右侧，占据固定宽度，左侧 canvas 自动填满剩余空间，且两边无额外边距
         self.scrollbar.pack(side=RIGHT, fill=Y)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
 
-        self.canvas.bind("<Enter>", self._bind_mousewheel)
-        self.canvas.bind("<Leave>", self._unbind_mousewheel)
+        # ===== 全局鼠标滚轮绑定 =====
+        self.root.bind("<MouseWheel>", self._on_root_mousewheel)   # 主窗口滚轮
+        self.canvas.bind("<MouseWheel>", self._on_root_mousewheel) # Canvas 滚轮
 
         if self.tools:
             self.create_tool_grid()
@@ -153,39 +155,43 @@ class Launcher:
             tb.Label(self.scrollable_frame, text="無可用工具",
                      font=("微软雅黑", 12)).pack(pady=50)
 
+        # 延迟执行尺寸调整
+        self.root.after(100, self._delayed_layout_update)
+
+    def _delayed_layout_update(self):
+        self._update_descriptions_wrap()
         self.root.update_idletasks()
         self._adjust_window_size()
 
-    def _bind_mousewheel(self, event):
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _unbind_mousewheel(self, event):
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event):
+    def _on_root_mousewheel(self, event):
+        """全局滚轮事件处理，统一滚动 canvas"""
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _adjust_window_size(self):
+        """根据实际卡片高度设置固定窗口大小"""
         self.scrollable_frame.update_idletasks()
-        req_width = self.scrollable_frame.winfo_reqwidth()
-        req_height = self.scrollable_frame.winfo_reqheight()
+        self.scrollable_frame.update()
+        children = self.scrollable_frame.winfo_children()
+        if not children:
+            return
 
+        card_height = children[0].winfo_height()
+        if card_height <= 0:
+            card_height = children[0].winfo_reqheight()
+
+        visible_height = card_height * 3 if card_height > 0 else 600
         title_height = 70
         progress_height = 25
         padding = 30
-
-        card_height = 0
-        children = self.scrollable_frame.winfo_children()
-        if children:
-            card_height = children[0].winfo_reqheight()
-        visible_height = card_height * 3 if card_height else req_height
-
         win_height = title_height + progress_height + visible_height + padding
+
+        req_width = self.scrollable_frame.winfo_reqwidth()
         scrollbar_width = 20
+        # 两边对称，所需总宽度 = 内容宽 + 滚动条宽 + 左右边距（已由 padx=20 提供）
         win_width = req_width + scrollbar_width + 40
 
         win_width = max(win_width, 800)
-        win_height = max(win_height, 500)
+        win_height = max(win_height, 400)
 
         self.root.geometry(f"{win_width}x{win_height}")
         self.root.resizable(False, False)
@@ -198,11 +204,9 @@ class Launcher:
         row = 0
         col = 0
         for idx, tool in enumerate(self.tools):
-            # 圆角卡片容器 (tb.LabelFrame with bootstyle)
             card = tb.LabelFrame(self.scrollable_frame, text="", padding=10, bootstyle="info")
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
 
-            # 自定义按钮样式（保留颜色和字体）
             style_name = f"Tool{idx}.TButton"
             bg = parse_color(tool.get("button_color"), DEFAULT_BUTTON_COLOR)
             fg = parse_color(tool.get("text_color"), DEFAULT_TEXT_COLOR)
@@ -216,21 +220,38 @@ class Launcher:
                             focusthickness=2,
                             focuscolor=style.colors.get('primary'))
 
-            # 圆角按钮
+            hover_bg = tool.get("hover_color")
+            if not hover_bg:
+                r = int(bg[1:3], 16); g = int(bg[3:5], 16); b = int(bg[5:7], 16)
+                r = max(0, r - 25); g = max(0, g - 25); b = max(0, b - 25)
+                hover_bg = f"#{r:02x}{g:02x}{b:02x}"
+            style.map(style_name,
+                      background=[("active", hover_bg), ("!active", bg)])
+
             btn = tb.Button(card, text=tool["name"], style=style_name,
                             command=lambda t=tool: self.run_tool(t))
             btn.pack(fill=X, pady=(5, 5))
 
-            # 描述文本
             desc = tool.get("description", "")
             if desc:
-                desc_label = tb.Label(card, text=desc, font=("微软雅黑", 9), foreground="gray")
+                desc_label = tb.Label(card, text=desc, font=("微软雅黑", 9),
+                                      foreground="gray", wraplength=1, justify="left",
+                                      anchor="w")
                 desc_label.pack(fill=X, pady=(0, 5))
+                self.desc_labels.append(desc_label)
 
             col += 1
             if col > 1:
                 col = 0
                 row += 1
+
+    def _update_descriptions_wrap(self):
+        for label in self.desc_labels:
+            card = label.master
+            card.update_idletasks()
+            card_width = card.winfo_width()
+            if card_width > 30:
+                label.configure(wraplength=card_width - 15)
 
     def run_tool(self, tool_config):
         exe_name = tool_config["exe"]
@@ -367,12 +388,10 @@ if __name__ == "__main__":
     if not check_instance():
         sys.exit(0)
 
-    # 创建 ttkbootstrap 根窗口，主题 flatly
     root = tb.Window(themename="flatly")
     root.withdraw()
     app = Launcher(root)
 
-    # 关闭 PyInstaller 启动画面（如果存在）
     try:
         import pyi_splash
         pyi_splash.close()
