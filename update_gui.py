@@ -2,7 +2,9 @@ import json
 import os
 import sys
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+import ttkbootstrap as tb
+from ttkbootstrap.constants import *
 from pathlib import Path
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -30,7 +32,7 @@ try:
 except ImportError:
     HAS_XDR = False
 
-# ---------- 單位轉換 ----------
+# ---------- 单位转换 ----------
 def cm_to_px(cm_val):
     return int(cm_val * 37.795)
 
@@ -38,7 +40,6 @@ def cm_to_emu(cm_val):
     return int(cm_val * 360000)
 
 def get_cell_value(wb, sheet_name, cell_ref):
-    """從 openpyxl 或 xlrd 工作簿獲取儲存格值"""
     if isinstance(wb, xlrd.Book):
         sheet = wb.sheet_by_name(sheet_name)
         row, col = coordinate_to_tuple(cell_ref)
@@ -92,93 +93,99 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("VSA_MBO_PBO 一鍵產生器")
-        self.root.geometry("1050x800")
         self.config = load_config()
         self.current_config_name = CONFIG_FILE
+        self.style = self.root.style
+
+        # ---------- 自定义按钮样式（继承 primary 主题，仅加粗字体） ----------
+        self.style.configure("CustomPrimary.TButton", **self.style.configure("primary.TButton"))
+        self.style.map("CustomPrimary.TButton", **self.style.map("primary.TButton"))
+        self.style.configure("CustomPrimary.TButton", font=("", 10, "bold"))
+
+        # ---------- 路径设置 ----------
+        path_frame = tb.LabelFrame(root, text="範本與輸出設定", padding=10, bootstyle="info")
+        path_frame.pack(fill=tk.X, padx=10, pady=5)
 
         self.tpl_path_var = tk.StringVar(value=self.config.get("template_path", ""))
         self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", ""))
         self.suffix_var = tk.StringVar(value=self.config.get("output_suffix", "_已更新"))
 
-        # ---------- 狀態列 ----------
-        self.status_frame = ttk.Frame(root, relief=tk.RAISED, borderwidth=2)
-        self.status_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        self.status_var = tk.StringVar()
-        ttk.Label(self.status_frame, textvariable=self.status_var,
-                  background="#D9EAF7", font=("微軟正黑體", 10, "bold")).pack(fill=tk.X, padx=10, pady=5)
-        self.update_status_bar()
+        tb.Label(path_frame, text="範本檔案:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        tb.Entry(path_frame, textvariable=self.tpl_path_var, width=70).grid(row=0, column=1, padx=5, pady=2)
+        tb.Button(path_frame, text="瀏覽", command=self.browse_tpl, bootstyle="secondary-outline").grid(row=0, column=2, padx=5)
 
-        # ---------- 範本與輸出 ----------
-        frm_tpl = ttk.LabelFrame(root, text="範本與輸出設定")
-        frm_tpl.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Label(frm_tpl, text="範本檔案:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
-        ttk.Entry(frm_tpl, textvariable=self.tpl_path_var, width=70).grid(row=0, column=1, padx=5, pady=2)
-        ttk.Button(frm_tpl, text="瀏覽", command=self.browse_tpl).grid(row=0, column=2, padx=5)
-        ttk.Label(frm_tpl, text="輸出資料夾:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
-        ttk.Entry(frm_tpl, textvariable=self.out_dir_var, width=70).grid(row=1, column=1, padx=5, pady=2)
-        ttk.Button(frm_tpl, text="瀏覽", command=self.browse_out_dir).grid(row=1, column=2, padx=5)
-        ttk.Label(frm_tpl, text="輸出檔案後綴:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
-        ttk.Entry(frm_tpl, textvariable=self.suffix_var, width=15).grid(row=2, column=1, sticky=tk.W, padx=5)
-        ttk.Label(frm_tpl, text="輸出資料夾留空則儲存至範本所在目錄", foreground="gray").grid(row=3, column=1, sticky=tk.W, padx=5)
+        tb.Label(path_frame, text="輸出資料夾:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        tb.Entry(path_frame, textvariable=self.out_dir_var, width=70).grid(row=1, column=1, padx=5, pady=2)
+        tb.Button(path_frame, text="瀏覽", command=self.browse_out_dir, bootstyle="secondary-outline").grid(row=1, column=2, padx=5)
 
-        # ---------- 資料來源管理（含捲軸） ----------
-        frm_ds = ttk.LabelFrame(root, text="資料來源管理")
-        frm_ds.pack(fill=tk.X, padx=10, pady=5)
-        ds_container = ttk.Frame(frm_ds)
+        tb.Label(path_frame, text="輸出檔案後綴:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        tb.Entry(path_frame, textvariable=self.suffix_var, width=15).grid(row=2, column=1, sticky=tk.W, padx=5)
+
+        tb.Label(path_frame, text="輸出資料夾留空則儲存至範本所在目錄", foreground="gray", font=("微软雅黑", 9)).grid(row=3, column=1, sticky=tk.W, padx=5)
+
+        # ---------- 数据源管理 ----------
+        ds_frame = tb.LabelFrame(root, text="資料來源管理", padding=10, bootstyle="info")
+        ds_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        ds_container = tb.Frame(ds_frame)
         ds_container.pack(fill=tk.X, padx=5, pady=5)
-        self.ds_tree = ttk.Treeview(ds_container, columns=("alias", "path"), show="headings", height=3)
+        self.ds_tree = tb.Treeview(ds_container, columns=("alias", "path"), show="headings", height=3, bootstyle="primary")
         self.ds_tree.heading("alias", text="別名")
         self.ds_tree.heading("path", text="路徑")
         self.ds_tree.column("alias", width=150)
         self.ds_tree.column("path", width=600)
-        vsb_ds = ttk.Scrollbar(ds_container, orient="vertical", command=self.ds_tree.yview)
+        vsb_ds = tb.Scrollbar(ds_container, orient=VERTICAL, command=self.ds_tree.yview, bootstyle="round")
         self.ds_tree.configure(yscrollcommand=vsb_ds.set)
         self.ds_tree.grid(row=0, column=0, sticky="nsew")
         vsb_ds.grid(row=0, column=1, sticky="ns")
         ds_container.grid_columnconfigure(0, weight=1)
-        btn_frm_ds = ttk.Frame(frm_ds)
-        btn_frm_ds.pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(btn_frm_ds, text="新增資料來源", command=self.add_datasource).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_ds, text="編輯選取", command=self.edit_datasource).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_ds, text="刪除選取", command=self.delete_datasource).pack(side=tk.LEFT, padx=5)
 
-        # ---------- 對應管理（Notebook） ----------
-        nb = ttk.Notebook(root)
-        nb.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        btn_ds = tb.Frame(ds_frame)
+        btn_ds.pack(fill=tk.X, padx=5, pady=2)
+        tb.Button(btn_ds, text="新增資料來源", command=self.add_datasource, bootstyle="primary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_ds, text="編輯選取", command=self.edit_datasource, bootstyle="secondary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_ds, text="刪除選取", command=self.delete_datasource, bootstyle="danger-outline").pack(side=tk.LEFT, padx=5)
 
-        # ---- 資料對應頁 ----
-        frm_data = ttk.Frame(nb)
-        nb.add(frm_data, text="資料對應")
-        data_container = ttk.Frame(frm_data)
-        data_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.data_tree = ttk.Treeview(data_container, columns=("source_alias", "source_cell", "target_cell", "note"), show="headings")
+        # ---------- 映射 Notebook（核心区域） ----------
+        nb = tb.Notebook(root)
+        nb.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.YES, padx=10, pady=5)
+
+        # ---- 数据映射页 ----
+        data_frame = tb.Frame(nb)
+        nb.add(data_frame, text="資料對應")
+
+        data_container = tb.Frame(data_frame)
+        data_container.pack(fill=tk.BOTH, expand=tk.YES, padx=5, pady=5)
+        self.data_tree = tb.Treeview(data_container, columns=("source_alias", "source_cell", "target_cell", "note"), show="headings", bootstyle="primary")
         self.data_tree.heading("source_alias", text="資料來源")
         self.data_tree.heading("source_cell", text="來源儲存格")
         self.data_tree.heading("target_cell", text="目標儲存格")
         self.data_tree.heading("note", text="備註")
-        self.data_tree.column("source_alias", width=100)
+        self.data_tree.column("source_alias", width=120)
         self.data_tree.column("source_cell", width=160)
         self.data_tree.column("target_cell", width=160)
         self.data_tree.column("note", width=200)
-        vsb_data = ttk.Scrollbar(data_container, orient="vertical", command=self.data_tree.yview)
+        vsb_data = tb.Scrollbar(data_container, orient=VERTICAL, command=self.data_tree.yview, bootstyle="round")
         self.data_tree.configure(yscrollcommand=vsb_data.set)
         self.data_tree.grid(row=0, column=0, sticky="nsew")
         vsb_data.grid(row=0, column=1, sticky="ns")
         data_container.grid_rowconfigure(0, weight=1)
         data_container.grid_columnconfigure(0, weight=1)
-        btn_frm_data = ttk.Frame(frm_data)
-        btn_frm_data.pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(btn_frm_data, text="新增", command=self.add_data_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_data, text="編輯選取", command=self.edit_data_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_data, text="複製選取", command=self.copy_data_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_data, text="刪除選取", command=lambda: self.delete_selected(self.data_tree, "data")).pack(side=tk.LEFT, padx=5)
 
-        # ---- 圖片對應頁 ----
-        frm_img = ttk.Frame(nb)
-        nb.add(frm_img, text="圖片對應")
-        img_container = ttk.Frame(frm_img)
-        img_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.img_tree = ttk.Treeview(img_container, columns=("number", "folder", "target", "height", "width", "position", "note"), show="headings")
+        btn_data = tb.Frame(data_frame)
+        btn_data.pack(fill=tk.X, padx=5, pady=2)
+        tb.Button(btn_data, text="新增", command=self.add_data_mapping, bootstyle="primary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_data, text="編輯選取", command=self.edit_data_mapping, bootstyle="secondary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_data, text="複製選取", command=self.copy_data_mapping, bootstyle="info-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_data, text="刪除選取", command=lambda: self.delete_selected(self.data_tree, "data"), bootstyle="danger-outline").pack(side=tk.LEFT, padx=5)
+
+        # ---- 图片映射页 ----
+        img_frame = tb.Frame(nb)
+        nb.add(img_frame, text="圖片對應")
+
+        img_container = tb.Frame(img_frame)
+        img_container.pack(fill=tk.BOTH, expand=tk.YES, padx=5, pady=5)
+        self.img_tree = tb.Treeview(img_container, columns=("number", "folder", "target", "height", "width", "position", "note"), show="headings", bootstyle="primary")
         self.img_tree.heading("number", text="圖片編號")
         self.img_tree.heading("folder", text="圖片資料夾")
         self.img_tree.heading("target", text="目標儲存格")
@@ -193,58 +200,52 @@ class App:
         self.img_tree.column("width", width=70)
         self.img_tree.column("position", width=90)
         self.img_tree.column("note", width=180)
-        vsb_img = ttk.Scrollbar(img_container, orient="vertical", command=self.img_tree.yview)
+        vsb_img = tb.Scrollbar(img_container, orient=VERTICAL, command=self.img_tree.yview, bootstyle="round")
         self.img_tree.configure(yscrollcommand=vsb_img.set)
         self.img_tree.grid(row=0, column=0, sticky="nsew")
         vsb_img.grid(row=0, column=1, sticky="ns")
         img_container.grid_rowconfigure(0, weight=1)
         img_container.grid_columnconfigure(0, weight=1)
-        btn_frm_img = ttk.Frame(frm_img)
-        btn_frm_img.pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(btn_frm_img, text="新增", command=self.add_image_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_img, text="編輯選取", command=self.edit_image_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_img, text="複製選取", command=self.copy_image_mapping).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frm_img, text="刪除選取", command=lambda: self.delete_selected(self.img_tree, "image")).pack(side=tk.LEFT, padx=5)
 
-        # ---------- 控制按鈕 ----------
-        btn_frm_ctrl = ttk.Frame(root)
-        btn_frm_ctrl.pack(pady=10)
-        btn_common = {"font": ("微軟正黑體", 10), "width": 12, "height": 1, "relief": tk.RAISED, "bd": 2}
-        run_btn = tk.Button(btn_frm_ctrl, text="⚡ 一鍵更新報告", command=self.run_update,
-                            bg="#0078D7", fg="white", activebackground="#005A9E", activeforeground="white", **btn_common)
-        run_btn.pack(side=tk.LEFT, padx=10)
-        export_btn = tk.Button(btn_frm_ctrl, text="匯出設定", command=self.export_config, **btn_common)
-        export_btn.pack(side=tk.LEFT, padx=10)
-        import_btn = tk.Button(btn_frm_ctrl, text="匯入設定", command=self.import_config, **btn_common)
-        import_btn.pack(side=tk.LEFT, padx=10)
+        btn_img = tb.Frame(img_frame)
+        btn_img.pack(fill=tk.X, padx=5, pady=2)
+        tb.Button(btn_img, text="新增", command=self.add_image_mapping, bootstyle="primary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_img, text="編輯選取", command=self.edit_image_mapping, bootstyle="secondary-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_img, text="複製選取", command=self.copy_image_mapping, bootstyle="info-outline").pack(side=tk.LEFT, padx=5)
+        tb.Button(btn_img, text="刪除選取", command=lambda: self.delete_selected(self.img_tree, "image"), bootstyle="danger-outline").pack(side=tk.LEFT, padx=5)
 
-        # ---------- 開發者水印 ----------
-        water_frame = ttk.Frame(root)
-        water_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
-        tk.Label(water_frame, text="Contact the Developer: shao-qing.lai@mail.foxconn.com",
-                 fg="lightgray", font=("Arial", 8), bg=root.cget("bg")).pack(side=tk.RIGHT)
+        # ---------- 控制按钮（固定在底部，居中对齐） ----------
+        ctrl_frame = tb.Frame(root)
+        ctrl_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
 
+        btn_container = tb.Frame(ctrl_frame)
+        btn_container.pack(anchor=tk.CENTER)
+
+        # 主按钮：使用自定义样式，继承 primary 主题，仅加粗字体
+        tb.Button(btn_container, text="⚡ 一鍵更新報告", command=self.run_update,
+                  bootstyle="primary", style="CustomPrimary.TButton").pack(side=tk.LEFT, padx=10)
+        tb.Button(btn_container, text="匯出設定", command=self.export_config,
+                  bootstyle="secondary-outline").pack(side=tk.LEFT, padx=10)
+        tb.Button(btn_container, text="匯入設定", command=self.import_config,
+                  bootstyle="secondary-outline").pack(side=tk.LEFT, padx=10)
+
+        # 刷新显示
         self.refresh_datasource_tree()
         self.refresh_data_tree()
         self.refresh_image_tree()
 
-    def update_status_bar(self):
-        tpl_name = os.path.basename(self.tpl_path_var.get()) or "未選擇"
-        cfg_name = os.path.basename(self.current_config_name)
-        self.status_var.set(f"📄 當前範本：{tpl_name}    |    ⚙️ 設定檔：{cfg_name}")
-
+    # ---------- 浏览 ----------
     def browse_tpl(self):
         path = filedialog.askopenfilename(filetypes=[("Excel檔案", "*.xlsx;*.xls")])
         if path:
             self.tpl_path_var.set(path)
-            self.update_status_bar()
 
     def browse_out_dir(self):
         path = filedialog.askdirectory()
         if path:
             self.out_dir_var.set(path)
 
-    # ---------- 資料來源管理 ----------
+    # ---------- 数据源管理 ----------
     def refresh_datasource_tree(self):
         for i in self.ds_tree.get_children():
             self.ds_tree.delete(i)
@@ -264,16 +265,16 @@ class App:
         self._datasource_dialog(idx, item)
 
     def _datasource_dialog(self, edit_idx, item=None):
-        popup = tk.Toplevel(self.root)
+        popup = tb.Toplevel(self.root)
         popup.title("編輯資料來源" if item else "新增資料來源")
-        ttk.Label(popup, text="別名:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        alias_entry = ttk.Entry(popup, width=30)
+        tb.Label(popup, text="別名:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        alias_entry = tb.Entry(popup, width=30)
         alias_entry.grid(row=0, column=1, padx=5, pady=5)
-        ttk.Label(popup, text="路徑:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        tb.Label(popup, text="路徑:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
         path_var = tk.StringVar()
-        path_entry = ttk.Entry(popup, textvariable=path_var, width=30)
+        path_entry = tb.Entry(popup, textvariable=path_var, width=30)
         path_entry.grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(popup, text="瀏覽", command=lambda: path_var.set(filedialog.askopenfilename(filetypes=[("Excel檔案", "*.xlsx;*.xls")]))).grid(row=1, column=2, padx=5)
+        tb.Button(popup, text="瀏覽", command=lambda: path_var.set(filedialog.askopenfilename(filetypes=[("Excel檔案", "*.xlsx;*.xls")])), bootstyle="secondary-outline").grid(row=1, column=2, padx=5)
         if item:
             alias_entry.insert(0, item["alias"])
             path_var.set(item["path"])
@@ -299,7 +300,7 @@ class App:
                 self.config["data_sources"].append(new_ds)
             self.refresh_datasource_tree()
             popup.destroy()
-        ttk.Button(popup, text="確定", command=save).grid(row=2, column=0, columnspan=3, pady=10)
+        tb.Button(popup, text="確定", command=save, bootstyle="primary").grid(row=2, column=0, columnspan=3, pady=10)
 
     def delete_datasource(self):
         selected = self.ds_tree.selection()
@@ -313,7 +314,7 @@ class App:
         del self.config["data_sources"][idx]
         self.refresh_datasource_tree()
 
-    # ---------- 資料對應操作 ----------
+    # ---------- 数据映射操作 ----------
     def refresh_data_tree(self):
         for i in self.data_tree.get_children():
             self.data_tree.delete(i)
@@ -342,26 +343,26 @@ class App:
         self._data_dialog(None, item)
 
     def _data_dialog(self, edit_idx, item=None):
-        popup = tk.Toplevel(self.root)
+        popup = tb.Toplevel(self.root)
         popup.title("編輯資料對應" if edit_idx is not None else "新增資料對應")
         row = 0
-        ttk.Label(popup, text="資料來源:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tb.Label(popup, text="資料來源:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         alias_var = tk.StringVar()
         aliases = [ds["alias"] for ds in self.config.get("data_sources", [])]
         if not aliases:
             messagebox.showwarning("無資料來源", "請先新增資料來源")
             popup.destroy()
             return
-        combo = ttk.Combobox(popup, textvariable=alias_var, values=aliases, state="readonly", width=28)
+        combo = tb.Combobox(popup, textvariable=alias_var, values=aliases, state="readonly", width=28)
         combo.grid(row=row, column=1, padx=5, pady=5); row+=1
-        ttk.Label(popup, text="來源儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        src_entry = ttk.Entry(popup, width=30)
+        tb.Label(popup, text="來源儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        src_entry = tb.Entry(popup, width=30)
         src_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
-        ttk.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        tgt_entry = ttk.Entry(popup, width=30)
+        tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tgt_entry = tb.Entry(popup, width=30)
         tgt_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
-        ttk.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        note_entry = ttk.Entry(popup, width=30)
+        tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        note_entry = tb.Entry(popup, width=30)
         note_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
 
         if item:
@@ -387,9 +388,9 @@ class App:
                 self.config["data_mappings"].append(new_map)
             self.refresh_data_tree()
             popup.destroy()
-        ttk.Button(popup, text="確定", command=save).grid(row=row, column=0, columnspan=2, pady=10)
+        tb.Button(popup, text="確定", command=save, bootstyle="primary").grid(row=row, column=0, columnspan=2, pady=10)
 
-    # ---------- 圖片對應操作（修復備註重疊） ----------
+    # ---------- 图片映射操作 ----------
     def refresh_image_tree(self):
         for i in self.img_tree.get_children():
             self.img_tree.delete(i)
@@ -427,48 +428,44 @@ class App:
         self._image_dialog(None, item)
 
     def _image_dialog(self, edit_idx, item=None):
-        popup = tk.Toplevel(self.root)
+        popup = tb.Toplevel(self.root)
         popup.title("編輯圖片對應" if edit_idx is not None else "新增圖片對應")
         row = 0
-        # 圖片編號
-        ttk.Label(popup, text="圖片編號:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        num_entry = ttk.Entry(popup, width=30)
+        tb.Label(popup, text="圖片編號:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        num_entry = tb.Entry(popup, width=30)
         num_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
-        # 圖片資料夾
-        ttk.Label(popup, text="圖片資料夾:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tb.Label(popup, text="圖片資料夾:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         folder_var = tk.StringVar()
-        folder_entry = ttk.Entry(popup, textvariable=folder_var, width=30)
+        folder_entry = tb.Entry(popup, textvariable=folder_var, width=30)
         folder_entry.grid(row=row, column=1, padx=5, pady=5)
-        ttk.Button(popup, text="瀏覽", command=lambda: folder_var.set(filedialog.askdirectory())).grid(row=row, column=2, padx=5); row+=1
-        # 目標儲存格
-        ttk.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        tgt_entry = ttk.Entry(popup, width=30)
+        tb.Button(popup, text="瀏覽", command=lambda: folder_var.set(filedialog.askdirectory()), bootstyle="secondary-outline").grid(row=row, column=2, padx=5); row+=1
+        tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tgt_entry = tb.Entry(popup, width=30)
         tgt_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
         # 高度
-        ttk.Label(popup, text="高度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        h_entry = ttk.Entry(popup, width=10)
+        tb.Label(popup, text="高度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        h_entry = tb.Entry(popup, width=10)
         h_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
-        # 寬度
-        ttk.Label(popup, text="寬度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        w_entry = ttk.Entry(popup, width=10)
+        # 宽度
+        tb.Label(popup, text="寬度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        w_entry = tb.Entry(popup, width=10)
         w_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
-        # 位置選擇
-        ttk.Label(popup, text="位置:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        # 位置选择
+        tb.Label(popup, text="位置:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         pos_var = tk.StringVar(value="top-left")
-        pos_frame = ttk.Frame(popup)
+        pos_frame = tb.Frame(popup)
         pos_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W)
-        ttk.Radiobutton(pos_frame, text="預設（左上角）", variable=pos_var, value="top-left").pack(side=tk.LEFT)
-        ttk.Radiobutton(pos_frame, text="自訂偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10); row+=1
-        # 偏移輸入框
-        offset_frame = ttk.Frame(popup)
+        tb.Radiobutton(pos_frame, text="預設（左上角）", variable=pos_var, value="top-left").pack(side=tk.LEFT)
+        tb.Radiobutton(pos_frame, text="自訂偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10); row+=1
+        offset_frame = tb.Frame(popup)
         offset_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W, pady=5)
-        ttk.Label(offset_frame, text="X偏移(cm):").pack(side=tk.LEFT)
-        x_entry = ttk.Entry(offset_frame, width=8)
+        tb.Label(offset_frame, text="X偏移(cm):").pack(side=tk.LEFT)
+        x_entry = tb.Entry(offset_frame, width=8)
         x_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Label(offset_frame, text="Y偏移(cm):").pack(side=tk.LEFT, padx=(15,0))
-        y_entry = ttk.Entry(offset_frame, width=8)
+        tb.Label(offset_frame, text="Y偏移(cm):").pack(side=tk.LEFT, padx=(15,0))
+        y_entry = tb.Entry(offset_frame, width=8)
         y_entry.pack(side=tk.LEFT, padx=5)
-        row += 1  # 偏移框佔用一行，備註從下一行開始
+        row += 1
 
         def toggle_offset(*args):
             if pos_var.get() == "custom":
@@ -481,12 +478,11 @@ class App:
                 y_entry.delete(0, tk.END); y_entry.insert(0, "0")
         pos_var.trace("w", toggle_offset)
 
-        # 備註（現在放在偏移框之後）
-        ttk.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        note_entry = ttk.Entry(popup, width=30)
+        # 备注
+        tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        note_entry = tb.Entry(popup, width=30)
         note_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
 
-        # 填入現有資料
         if item:
             num_entry.insert(0, item["image_number"])
             folder_var.set(item["image_folder"])
@@ -542,7 +538,7 @@ class App:
                 self.config["image_mappings"].append(new_map)
             self.refresh_image_tree()
             popup.destroy()
-        ttk.Button(popup, text="確定", command=save).grid(row=row, column=0, columnspan=3, pady=10)
+        tb.Button(popup, text="確定", command=save, bootstyle="primary").grid(row=row, column=0, columnspan=3, pady=10)
 
     def delete_selected(self, tree, map_type):
         selected = tree.selection()
@@ -555,7 +551,7 @@ class App:
             del self.config["image_mappings"][idx]
             self.refresh_image_tree()
 
-    # ---------- 設定匯入/匯出 ----------
+    # ---------- 配置导入导出 ----------
     def export_config(self):
         self.save_current_config()
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON檔案", "*.json")], initialfile="config_backup.json")
@@ -585,7 +581,6 @@ class App:
             self.refresh_datasource_tree()
             self.refresh_data_tree()
             self.refresh_image_tree()
-            self.update_status_bar()
             messagebox.showinfo("匯入成功", "設定已匯入並更新介面")
         except Exception as e:
             messagebox.showerror("匯入失敗", f"檔案格式錯誤:\n{str(e)}")
@@ -596,7 +591,7 @@ class App:
         self.config["output_suffix"] = self.suffix_var.get()
         save_config(self.config)
 
-    # ---------- 核心執行 ----------
+    # ---------- 核心执行 ----------
     def run_update(self):
         self.save_current_config()
         cfg = self.config
@@ -638,7 +633,7 @@ class App:
             messagebox.showerror("開啟範本失敗", str(e))
             return
 
-        # 資料寫入
+        # 数据写入
         for i, m in enumerate(cfg.get("data_mappings", [])):
             try:
                 alias = m.get("source_alias")
@@ -670,7 +665,7 @@ class App:
                 messagebox.showerror("資料寫入錯誤", f"對應 {i+1}:\n來源 {m['source_cell']} → 目標 {m['target_cell']}\n錯誤：{e}")
                 return
 
-        # 圖片插入
+        # 图片插入
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -742,7 +737,7 @@ class App:
             if isinstance(w, xlrd.Book): pass
             else: w.close()
 
-        # 輸出檔案
+        # 输出文件
         tpl_path = Path(cfg["template_path"])
         suffix = cfg.get("output_suffix", "_已更新")
         out_dir = cfg.get("output_dir", "")
@@ -768,6 +763,16 @@ class App:
             pass
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = tb.Window(themename="flatly")
+    
+    # 窗口尺寸：宽度35%，高度50%（比原来增加一成）
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    width = int(screen_width * 0.35)
+    height = int(screen_height * 0.5)  # 从0.4调整为0.5
+    root.geometry(f"{width}x{height}")
+    root.minsize(width, height)  # 禁止缩小到初始尺寸以下
+    root.resizable(True, True)
+    
     app = App(root)
     root.mainloop()
