@@ -17,8 +17,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install ttkbootstrap              # ← 必须安装
           pip install pyinstaller
-          pyinstaller --version
 
       - name: Build Launcher with Splash and Icon
         run: |
@@ -26,6 +26,7 @@ jobs:
             --icon "VSAPE.ico" `
             --splash "splash.png" `
             --collect-all ttkbootstrap `
+            --hidden-import ttkbootstrap `
             launcher.py
 
       - name: Upload artifact
