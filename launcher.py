@@ -126,9 +126,17 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 滚动区域 —— 关键修改：左右对称，且滚轮全局生效
-        canvas_frame = tb.Frame(root)
-        canvas_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))   # 左右边距相同
+        # 外层容器（无 padx，用于容纳左侧间隔、canvas 和滚动条）
+        outer_frame = tb.Frame(root)
+        outer_frame.pack(fill=BOTH, expand=YES, pady=(5, 10))
+
+        # 左侧 20px 间隔（模拟左侧空白）
+        left_spacer = tb.Frame(outer_frame, width=20, height=1)
+        left_spacer.pack(side=LEFT, fill=Y)
+
+        # canvas 和滚动条的容器
+        canvas_frame = tb.Frame(outer_frame)
+        canvas_frame.pack(side=LEFT, fill=BOTH, expand=YES)
 
         self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
         self.scrollbar = tb.Scrollbar(canvas_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
@@ -141,13 +149,12 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 滚动条紧贴右侧，占据固定宽度，左侧 canvas 自动填满剩余空间，且两边无额外边距
         self.scrollbar.pack(side=RIGHT, fill=Y)
         self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
 
-        # ===== 全局鼠标滚轮绑定 =====
-        self.root.bind("<MouseWheel>", self._on_root_mousewheel)   # 主窗口滚轮
-        self.canvas.bind("<MouseWheel>", self._on_root_mousewheel) # Canvas 滚轮
+        # 全局滚轮绑定
+        self.root.bind("<MouseWheel>", self._on_root_mousewheel)
+        self.canvas.bind("<MouseWheel>", self._on_root_mousewheel)
 
         if self.tools:
             self.create_tool_grid()
@@ -155,7 +162,6 @@ class Launcher:
             tb.Label(self.scrollable_frame, text="無可用工具",
                      font=("微软雅黑", 12)).pack(pady=50)
 
-        # 延迟执行尺寸调整
         self.root.after(100, self._delayed_layout_update)
 
     def _delayed_layout_update(self):
@@ -164,11 +170,9 @@ class Launcher:
         self._adjust_window_size()
 
     def _on_root_mousewheel(self, event):
-        """全局滚轮事件处理，统一滚动 canvas"""
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _adjust_window_size(self):
-        """根据实际卡片高度设置固定窗口大小"""
         self.scrollable_frame.update_idletasks()
         self.scrollable_frame.update()
         children = self.scrollable_frame.winfo_children()
@@ -187,8 +191,7 @@ class Launcher:
 
         req_width = self.scrollable_frame.winfo_reqwidth()
         scrollbar_width = 20
-        # 两边对称，所需总宽度 = 内容宽 + 滚动条宽 + 左右边距（已由 padx=20 提供）
-        win_width = req_width + scrollbar_width + 40
+        win_width = req_width + scrollbar_width + 20  # 左侧间隔20 + 滚动条20
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
