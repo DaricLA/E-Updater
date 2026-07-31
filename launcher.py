@@ -126,16 +126,16 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，滚动条绝对定位）
+        # 外层容器（左右各40px空白，滚动条绝对定位，再向右偏移20px）
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条绝对定位到右上角，宽度20px，高度跟随 outer_frame
+        # 滚动条绝对定位，向右偏移20px
         self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20)
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=20)
         outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
         self.scrollable_frame = tb.Frame(self.canvas)
@@ -146,7 +146,6 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 同步 Canvas 可视宽度到 scrollable_frame，确保内容充满 Canvas，左右对称
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         # 全局滚轮绑定
@@ -162,7 +161,6 @@ class Launcher:
         self.root.after(100, self._delayed_layout_update)
 
     def _on_canvas_configure(self, event):
-        """让 scrollable_frame 的宽度始终等于 canvas 的可视宽度"""
         canvas_width = event.width
         self.canvas.itemconfig(self.canvas_window, width=canvas_width)
 
@@ -191,9 +189,8 @@ class Launcher:
         padding = 30
         win_height = title_height + progress_height + visible_height + padding
 
-        # 获取 scrollable_frame 的实际需求宽度，加上左右各40px空白
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 80   # 左右各40px
+        win_width = req_width + 80   # 左右各40px（滚动条已脱离，不参与计算）
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
