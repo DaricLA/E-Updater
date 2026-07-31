@@ -146,6 +146,9 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
+        # 关键：同步 Canvas 可视宽度到 scrollable_frame，确保内容充满 Canvas，左右对称
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
         # 全局滚轮绑定
         self.root.bind("<MouseWheel>", self._on_root_mousewheel)
         self.canvas.bind("<MouseWheel>", self._on_root_mousewheel)
@@ -157,6 +160,11 @@ class Launcher:
                      font=("微软雅黑", 12)).pack(pady=50)
 
         self.root.after(100, self._delayed_layout_update)
+
+    def _on_canvas_configure(self, event):
+        """让 scrollable_frame 的宽度始终等于 canvas 的可视宽度"""
+        canvas_width = event.width
+        self.canvas.itemconfig(self.canvas_window, width=canvas_width)
 
     def _delayed_layout_update(self):
         self._update_descriptions_wrap()
@@ -183,8 +191,9 @@ class Launcher:
         padding = 30
         win_height = title_height + progress_height + visible_height + padding
 
+        # 获取 scrollable_frame 的实际需求宽度，加上左右各20px空白
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 40   # 左右各20px空白，滚动条不占位
+        win_width = req_width + 40
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
