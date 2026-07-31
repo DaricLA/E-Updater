@@ -126,31 +126,25 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（无 padx，用于容纳左侧间隔、canvas 和滚动条）
+        # 外层容器（左右各20px空白，滚动条绝对定位）
         outer_frame = tb.Frame(root)
-        outer_frame.pack(fill=BOTH, expand=YES, pady=(5, 10))
+        outer_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))
 
-        # 左侧 20px 间隔（模拟左侧空白）
-        left_spacer = tb.Frame(outer_frame, width=20, height=1)
-        left_spacer.pack(side=LEFT, fill=Y)
+        self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
+        self.canvas.pack(fill=BOTH, expand=YES)
 
-        # canvas 和滚动条的容器
-        canvas_frame = tb.Frame(outer_frame)
-        canvas_frame.pack(side=LEFT, fill=BOTH, expand=YES)
+        # 滚动条绝对定位到右上角，宽度20px，高度跟随 outer_frame
+        self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20)
+        outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
-        self.canvas = tk.Canvas(canvas_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
-        self.scrollbar = tb.Scrollbar(canvas_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
         self.scrollable_frame = tb.Frame(self.canvas)
-
         self.scrollable_frame.bind(
             "<Configure>",
             lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        self.scrollbar.pack(side=RIGHT, fill=Y)
-        self.canvas.pack(side=LEFT, fill=BOTH, expand=YES)
 
         # 全局滚轮绑定
         self.root.bind("<MouseWheel>", self._on_root_mousewheel)
@@ -190,8 +184,7 @@ class Launcher:
         win_height = title_height + progress_height + visible_height + padding
 
         req_width = self.scrollable_frame.winfo_reqwidth()
-        scrollbar_width = 20
-        win_width = req_width + scrollbar_width + 20  # 左侧间隔20 + 滚动条20
+        win_width = req_width + 40   # 左右各20px空白，滚动条不占位
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
