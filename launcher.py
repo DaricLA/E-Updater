@@ -117,6 +117,9 @@ class Launcher:
         self.launch_records = {}
         self.desc_labels = []
 
+        # 全局设置 LabelFrame 标题样式（小号、浅灰）
+        self.root.style.configure("TLabelframe.Label", font=("微软雅黑", 3), foreground="#B0B0B0")
+
         # 标题栏
         title_frame = tb.Frame(root, padding=(15, 15, 15, 5))
         title_frame.pack(fill=X)
@@ -126,16 +129,15 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，不包含滚动条）
+        # 外层容器
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="white")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条放在根窗口上，右侧对齐，宽度20px，覆盖在右侧空白上
         self.scrollbar = tb.Scrollbar(root, orient=VERTICAL, command=self.canvas.yview, bootstyle="primary-round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=-40)  # 向左偏移40px，使其处于右侧40px空白区内
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20)
         root.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
         self.scrollable_frame = tb.Frame(self.canvas)
@@ -148,7 +150,6 @@ class Launcher:
 
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
-        # 全局滚轮绑定
         self.root.bind("<MouseWheel>", self._on_root_mousewheel)
         self.canvas.bind("<MouseWheel>", self._on_root_mousewheel)
 
@@ -190,7 +191,7 @@ class Launcher:
         win_height = title_height + progress_height + visible_height + padding
 
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 80   # 左右各40px，不含滚动条
+        win_width = req_width + 80
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
@@ -206,7 +207,8 @@ class Launcher:
         row = 0
         col = 0
         for idx, tool in enumerate(self.tools):
-            card = tb.LabelFrame(self.scrollable_frame, text="", padding=10, bootstyle="info")
+            # 序号前后加空格
+            card = tb.LabelFrame(self.scrollable_frame, text=f" {idx+1} ", padding=10, bootstyle="info")
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
 
             style_name = f"Tool{idx}.TButton"
@@ -263,7 +265,6 @@ class Launcher:
             messagebox.showerror("錯誤", f"找不到程式：{target_path}")
             return
 
-        # explorer 启动
         if tool_config.get("start_method") == "explorer":
             last_time = self.launch_records.get(exe_name, 0)
             now = time.time()
@@ -284,7 +285,6 @@ class Launcher:
                 self.progress.pack_forget()
             return
 
-        # startfile 启动
         if tool_config.get("start_method") == "startfile":
             last_time = self.launch_records.get(exe_name, 0)
             now = time.time()
@@ -305,7 +305,6 @@ class Launcher:
                 self.progress.pack_forget()
             return
 
-        # subprocess 启动
         set_cwd = tool_config.get("set_cwd", True)
         use_shell = tool_config.get("shell", False)
         clean_env = tool_config.get("clean_env", False)
