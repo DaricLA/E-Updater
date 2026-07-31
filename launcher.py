@@ -126,16 +126,16 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，滚动条绝对定位，再向右偏移20px）
+        # 外层容器（左右各40px空白，滚动条绝对定位，再向右偏移10px）
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条绝对定位，向右偏移20px
+        # 滚动条绝对定位，向右偏移10px
         self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=20)
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=10)
         outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
         self.scrollable_frame = tb.Frame(self.canvas)
