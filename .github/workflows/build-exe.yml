@@ -27,6 +27,8 @@ jobs:
             --collect-all PIL `
             --collect-all et_xmlfile `
             --collect-all xlrd `
+            --collect-all ttkbootstrap `
+            --hidden-import ttkbootstrap `
             --hidden-import openpyxl `
             --hidden-import PIL `
             --hidden-import et_xmlfile `
