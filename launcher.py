@@ -126,9 +126,9 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各20px空白，滚动条绝对定位）
+        # 外层容器（左右各40px空白，滚动条绝对定位）
         outer_frame = tb.Frame(root)
-        outer_frame.pack(fill=BOTH, expand=YES, padx=20, pady=(5, 10))
+        outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
         self.canvas.pack(fill=BOTH, expand=YES)
@@ -146,7 +146,7 @@ class Launcher:
         self.canvas_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        # 关键：同步 Canvas 可视宽度到 scrollable_frame，确保内容充满 Canvas，左右对称
+        # 同步 Canvas 可视宽度到 scrollable_frame，确保内容充满 Canvas，左右对称
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         # 全局滚轮绑定
@@ -191,9 +191,9 @@ class Launcher:
         padding = 30
         win_height = title_height + progress_height + visible_height + padding
 
-        # 获取 scrollable_frame 的实际需求宽度，加上左右各20px空白
+        # 获取 scrollable_frame 的实际需求宽度，加上左右各40px空白
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 40
+        win_width = req_width + 80   # 左右各40px
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
