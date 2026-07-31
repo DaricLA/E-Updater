@@ -108,7 +108,7 @@ class Launcher:
         if self.version:
             title += f" {self.version}"
         self.root.title(title)
-        self.root.configure(bg="#f5f5f5")
+        self.root.configure(bg="white")
 
         default_font = ("微软雅黑", 10)
         self.root.option_add("*Font", default_font)
@@ -126,17 +126,17 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，滚动条绝对定位，再向右偏移10px）
+        # 外层容器（左右各40px空白，不包含滚动条）
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
-        self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="#f5f5f5")
+        self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="white")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条绝对定位，向右偏移10px
-        self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=10)
-        outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
+        # 滚动条放在根窗口上，右侧对齐，宽度20px，覆盖在右侧空白上
+        self.scrollbar = tb.Scrollbar(root, orient=VERTICAL, command=self.canvas.yview, bootstyle="primary-round")
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=20, x=-40)  # 向左偏移40px，使其处于右侧40px空白区内
+        root.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
         self.scrollable_frame = tb.Frame(self.canvas)
         self.scrollable_frame.bind(
@@ -190,7 +190,7 @@ class Launcher:
         win_height = title_height + progress_height + visible_height + padding
 
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 80   # 左右各40px（滚动条已脱离，不参与计算）
+        win_width = req_width + 80   # 左右各40px，不含滚动条
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
