@@ -89,6 +89,36 @@ def get_default_config():
         "image_mappings": []
     }
 
+# ========== 占位符工具函数 ==========
+def add_placeholder(entry, placeholder_text):
+    """为 Entry 添加占位符效果"""
+    entry._placeholder_active = True
+    entry._placeholder_text = placeholder_text
+    entry.insert(0, placeholder_text)
+    entry.config(foreground="gray")
+
+    def on_focus_in(event):
+        if entry._placeholder_active:
+            entry.delete(0, tk.END)
+            entry.config(foreground="black")
+            entry._placeholder_active = False
+
+    def on_focus_out(event):
+        if not entry.get().strip():
+            entry.delete(0, tk.END)
+            entry.insert(0, placeholder_text)
+            entry.config(foreground="gray")
+            entry._placeholder_active = True
+
+    entry.bind("<FocusIn>", on_focus_in)
+    entry.bind("<FocusOut>", on_focus_out)
+
+def get_entry_value(entry):
+    """获取 Entry 的真实值，忽略占位符"""
+    if hasattr(entry, "_placeholder_active") and entry._placeholder_active:
+        return ""
+    return entry.get().strip()
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -268,17 +298,24 @@ class App:
         tb.Label(popup, text="別名:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
         alias_entry = tb.Entry(popup, width=30)
         alias_entry.grid(row=0, column=1, padx=5, pady=5)
+        add_placeholder(alias_entry, "非破壞性數據")
         tb.Label(popup, text="路徑:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
         path_var = tk.StringVar()
         path_entry = tb.Entry(popup, textvariable=path_var, width=30)
         path_entry.grid(row=1, column=1, padx=5, pady=5)
         tb.Button(popup, text="瀏覽", command=lambda: path_var.set(filedialog.askopenfilename(filetypes=[("Excel檔案", "*.xlsx;*.xls")])), bootstyle="secondary-outline").grid(row=1, column=2, padx=5)
         if item:
+            alias_entry.delete(0, tk.END)
             alias_entry.insert(0, item["alias"])
+            alias_entry.config(foreground="black")
+            alias_entry._placeholder_active = False
             path_var.set(item["path"])
 
+        popup.grab_set()
+        popup.focus_force()
+
         def save():
-            alias = alias_entry.get().strip()
+            alias = get_entry_value(alias_entry)
             path = path_var.get().strip()
             if not alias or not path:
                 messagebox.showwarning("輸入不完整", "別名和路徑不能為空")
@@ -381,6 +418,7 @@ class App:
         tb.Label(popup, text="來源儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         src_cell_entry = tb.Entry(popup, width=30)
         src_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(src_cell_entry, "A1")
 
         tb.Label(popup, text="目標 Sheet:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         tgt_sheet_var = tk.StringVar()
@@ -390,10 +428,12 @@ class App:
         tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         tgt_cell_entry = tb.Entry(popup, width=30)
         tgt_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(tgt_cell_entry, "A1")
 
         tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         note_entry = tb.Entry(popup, width=30)
         note_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(note_entry, "Placement X")
 
         if item:
             alias_var.set(item.get("source_alias", aliases[0]))
@@ -403,17 +443,28 @@ class App:
             else:
                 src_sheet, src_cell = "", src_full
             src_sheet_var.set(src_sheet)
-            src_cell_entry.insert(0, src_cell)
-
+            if src_cell:
+                src_cell_entry.delete(0, tk.END)
+                src_cell_entry.insert(0, src_cell)
+                src_cell_entry.config(foreground="black")
+                src_cell_entry._placeholder_active = False
             tgt_full = item.get("target_cell", "")
             if "!" in tgt_full:
                 tgt_sheet, tgt_cell = tgt_full.split("!", 1)
             else:
                 tgt_sheet, tgt_cell = "", tgt_full
             tgt_sheet_var.set(tgt_sheet)
-            tgt_cell_entry.insert(0, tgt_cell)
-
-            note_entry.insert(0, item.get("note", ""))
+            if tgt_cell:
+                tgt_cell_entry.delete(0, tk.END)
+                tgt_cell_entry.insert(0, tgt_cell)
+                tgt_cell_entry.config(foreground="black")
+                tgt_cell_entry._placeholder_active = False
+            note_val = item.get("note", "")
+            if note_val:
+                note_entry.delete(0, tk.END)
+                note_entry.insert(0, note_val)
+                note_entry.config(foreground="black")
+                note_entry._placeholder_active = False
         else:
             combo_alias.current(0)
 
@@ -440,13 +491,16 @@ class App:
         update_src_sheets()
         update_tgt_sheets()
 
+        popup.grab_set()
+        popup.focus_force()
+
         def save():
             alias = alias_var.get()
             src_sheet = src_sheet_var.get()
-            src_cell = src_cell_entry.get().strip()
+            src_cell = get_entry_value(src_cell_entry)
             tgt_sheet = tgt_sheet_var.get()
-            tgt_cell = tgt_cell_entry.get().strip()
-            note = note_entry.get().strip()
+            tgt_cell = get_entry_value(tgt_cell_entry)
+            note = get_entry_value(note_entry)
 
             if not alias or not src_sheet or not src_cell or not tgt_sheet or not tgt_cell:
                 messagebox.showwarning("輸入不完整", "所有欄位不能為空")
@@ -510,6 +564,7 @@ class App:
         tb.Label(popup, text="圖片編號:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         num_entry = tb.Entry(popup, width=30)
         num_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(num_entry, "圖片名稱")
 
         tb.Label(popup, text="圖片資料夾:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         folder_var = tk.StringVar()
@@ -525,6 +580,7 @@ class App:
         tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         tgt_cell_entry = tb.Entry(popup, width=30)
         tgt_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(tgt_cell_entry, "A1")
 
         tb.Label(popup, text="高度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         h_entry = tb.Entry(popup, width=10)
@@ -564,9 +620,15 @@ class App:
         tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         note_entry = tb.Entry(popup, width=30)
         note_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+        add_placeholder(note_entry, "Cosmetic")
 
         if item:
-            num_entry.insert(0, item["image_number"])
+            num_val = item.get("image_number", "")
+            if num_val:
+                num_entry.delete(0, tk.END)
+                num_entry.insert(0, num_val)
+                num_entry.config(foreground="black")
+                num_entry._placeholder_active = False
             folder_var.set(item["image_folder"])
             tgt_full = item.get("target_cell", "")
             if "!" in tgt_full:
@@ -574,13 +636,22 @@ class App:
             else:
                 tgt_sheet, tgt_cell = "", tgt_full
             tgt_sheet_var.set(tgt_sheet)
-            tgt_cell_entry.insert(0, tgt_cell)
+            if tgt_cell:
+                tgt_cell_entry.delete(0, tk.END)
+                tgt_cell_entry.insert(0, tgt_cell)
+                tgt_cell_entry.config(foreground="black")
+                tgt_cell_entry._placeholder_active = False
             h_entry.insert(0, str(item["height_cm"]))
             w_entry.insert(0, str(item["width_cm"]))
             pos_var.set(item.get("position", "top-left"))
             x_entry.insert(0, str(item.get("offset_x_cm", 0)))
             y_entry.insert(0, str(item.get("offset_y_cm", 0)))
-            note_entry.insert(0, item.get("note", ""))
+            note_val = item.get("note", "")
+            if note_val:
+                note_entry.delete(0, tk.END)
+                note_entry.insert(0, note_val)
+                note_entry.config(foreground="black")
+                note_entry._placeholder_active = False
         else:
             h_entry.insert(0, "2.8"); w_entry.insert(0, "3.5")
             x_entry.insert(0, "0"); y_entry.insert(0, "0")
@@ -594,11 +665,14 @@ class App:
                 tgt_sheet_var.set(sheets[0])
         update_tgt_sheets()
 
+        popup.grab_set()
+        popup.focus_force()
+
         def save():
-            num = num_entry.get().strip()
+            num = get_entry_value(num_entry)
             folder = folder_var.get().strip()
             tgt_sheet = tgt_sheet_var.get()
-            tgt_cell = tgt_cell_entry.get().strip()
+            tgt_cell = get_entry_value(tgt_cell_entry)
             try:
                 h = float(h_entry.get().strip())
                 w = float(w_entry.get().strip())
@@ -614,7 +688,7 @@ class App:
                     return
             else:
                 off_x = 0.0; off_y = 0.0
-            note = note_entry.get().strip()
+            note = get_entry_value(note_entry)
             if not num or not folder or not tgt_sheet or not tgt_cell:
                 messagebox.showwarning("輸入不完整", "所有欄位必填")
                 return
