@@ -97,10 +97,10 @@ class App:
         self.current_config_name = CONFIG_FILE
         self.style = self.root.style
 
-        # ---------- 自定义按钮样式（继承 primary 主题，仅加粗字体） ----------
-        self.style.configure("CustomPrimary.TButton", **self.style.configure("primary.TButton"))
-        self.style.map("CustomPrimary.TButton", **self.style.map("primary.TButton"))
-        self.style.configure("CustomPrimary.TButton", font=("", 10, "bold"))
+        # ---------- 自定义按钮样式 ----------
+        self.style.configure("CustomInfo.TButton", **self.style.configure("info.TButton"))
+        self.style.map("CustomInfo.TButton", **self.style.map("info.TButton"))
+        self.style.configure("CustomInfo.TButton", font=("", 10, "bold"))
 
         # ---------- 路径设置 ----------
         path_frame = tb.LabelFrame(root, text="範本與輸出設定", padding=10, bootstyle="info")
@@ -146,7 +146,7 @@ class App:
         tb.Button(btn_ds, text="編輯選取", command=self.edit_datasource, bootstyle="secondary-outline").pack(side=tk.LEFT, padx=5)
         tb.Button(btn_ds, text="刪除選取", command=self.delete_datasource, bootstyle="danger-outline").pack(side=tk.LEFT, padx=5)
 
-        # ---------- 映射 Notebook（核心区域） ----------
+        # ---------- 映射 Notebook ----------
         nb = tb.Notebook(root)
         nb.pack(side=tk.TOP, fill=tk.BOTH, expand=tk.YES, padx=10, pady=5)
 
@@ -214,22 +214,20 @@ class App:
         tb.Button(btn_img, text="複製選取", command=self.copy_image_mapping, bootstyle="info-outline").pack(side=tk.LEFT, padx=5)
         tb.Button(btn_img, text="刪除選取", command=lambda: self.delete_selected(self.img_tree, "image"), bootstyle="danger-outline").pack(side=tk.LEFT, padx=5)
 
-        # ---------- 控制按钮（固定在底部，居中对齐） ----------
+        # ---------- 控制按钮 ----------
         ctrl_frame = tb.Frame(root)
         ctrl_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10)
 
         btn_container = tb.Frame(ctrl_frame)
         btn_container.pack(anchor=tk.CENTER)
 
-        # 主按钮：使用自定义样式，继承 primary 主题，仅加粗字体
         tb.Button(btn_container, text="⚡ 一鍵更新報告", command=self.run_update,
-                  bootstyle="primary", style="CustomPrimary.TButton").pack(side=tk.LEFT, padx=10)
+                  bootstyle="info", style="CustomInfo.TButton").pack(side=tk.LEFT, padx=10)
         tb.Button(btn_container, text="匯出設定", command=self.export_config,
                   bootstyle="secondary-outline").pack(side=tk.LEFT, padx=10)
         tb.Button(btn_container, text="匯入設定", command=self.import_config,
                   bootstyle="secondary-outline").pack(side=tk.LEFT, padx=10)
 
-        # 刷新显示
         self.refresh_datasource_tree()
         self.refresh_data_tree()
         self.refresh_image_tree()
@@ -342,10 +340,29 @@ class App:
         item = self.config["data_mappings"][idx].copy()
         self._data_dialog(None, item)
 
+    def _get_sheet_names(self, file_path):
+        if not file_path or not os.path.exists(file_path):
+            return []
+        ext = os.path.splitext(file_path)[1].lower()
+        try:
+            if ext == '.xls':
+                if HAS_XLRD:
+                    wb = xlrd.open_workbook(file_path)
+                    sheets = wb.sheet_names()
+                    return sheets
+            else:
+                wb = load_workbook(file_path, read_only=True)
+                sheets = wb.sheetnames
+                wb.close()
+                return sheets
+        except Exception:
+            return []
+
     def _data_dialog(self, edit_idx, item=None):
         popup = tb.Toplevel(self.root)
         popup.title("編輯資料對應" if edit_idx is not None else "新增資料對應")
         row = 0
+
         tb.Label(popup, text="資料來源:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         alias_var = tk.StringVar()
         aliases = [ds["alias"] for ds in self.config.get("data_sources", [])]
@@ -353,41 +370,99 @@ class App:
             messagebox.showwarning("無資料來源", "請先新增資料來源")
             popup.destroy()
             return
-        combo = tb.Combobox(popup, textvariable=alias_var, values=aliases, state="readonly", width=28)
-        combo.grid(row=row, column=1, padx=5, pady=5); row+=1
+        combo_alias = tb.Combobox(popup, textvariable=alias_var, values=aliases, state="readonly", width=28)
+        combo_alias.grid(row=row, column=1, padx=5, pady=5); row += 1
+
+        tb.Label(popup, text="來源 Sheet:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        src_sheet_var = tk.StringVar()
+        combo_src_sheet = tb.Combobox(popup, textvariable=src_sheet_var, width=28)
+        combo_src_sheet.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="來源儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        src_entry = tb.Entry(popup, width=30)
-        src_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        src_cell_entry = tb.Entry(popup, width=30)
+        src_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+
+        tb.Label(popup, text="目標 Sheet:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tgt_sheet_var = tk.StringVar()
+        combo_tgt_sheet = tb.Combobox(popup, textvariable=tgt_sheet_var, width=28)
+        combo_tgt_sheet.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        tgt_entry = tb.Entry(popup, width=30)
-        tgt_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        tgt_cell_entry = tb.Entry(popup, width=30)
+        tgt_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         note_entry = tb.Entry(popup, width=30)
-        note_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        note_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
 
         if item:
             alias_var.set(item.get("source_alias", aliases[0]))
-            src_entry.insert(0, item["source_cell"])
-            tgt_entry.insert(0, item["target_cell"])
+            src_full = item.get("source_cell", "")
+            if "!" in src_full:
+                src_sheet, src_cell = src_full.split("!", 1)
+            else:
+                src_sheet, src_cell = "", src_full
+            src_sheet_var.set(src_sheet)
+            src_cell_entry.insert(0, src_cell)
+
+            tgt_full = item.get("target_cell", "")
+            if "!" in tgt_full:
+                tgt_sheet, tgt_cell = tgt_full.split("!", 1)
+            else:
+                tgt_sheet, tgt_cell = "", tgt_full
+            tgt_sheet_var.set(tgt_sheet)
+            tgt_cell_entry.insert(0, tgt_cell)
+
             note_entry.insert(0, item.get("note", ""))
         else:
-            combo.current(0)
+            combo_alias.current(0)
+
+        def update_src_sheets():
+            alias = alias_var.get()
+            ds_path = None
+            for ds in self.config.get("data_sources", []):
+                if ds["alias"] == alias:
+                    ds_path = ds["path"]
+                    break
+            sheets = self._get_sheet_names(ds_path) if ds_path else []
+            combo_src_sheet['values'] = sheets
+            if sheets and not src_sheet_var.get():
+                src_sheet_var.set(sheets[0])
+
+        def update_tgt_sheets():
+            tpl_path = self.tpl_path_var.get()
+            sheets = self._get_sheet_names(tpl_path) if tpl_path else []
+            combo_tgt_sheet['values'] = sheets
+            if sheets and not tgt_sheet_var.get():
+                tgt_sheet_var.set(sheets[0])
+
+        combo_alias.bind("<<ComboboxSelected>>", lambda e: update_src_sheets())
+        update_src_sheets()
+        update_tgt_sheets()
 
         def save():
             alias = alias_var.get()
-            src = src_entry.get().strip()
-            tgt = tgt_entry.get().strip()
+            src_sheet = src_sheet_var.get()
+            src_cell = src_cell_entry.get().strip()
+            tgt_sheet = tgt_sheet_var.get()
+            tgt_cell = tgt_cell_entry.get().strip()
             note = note_entry.get().strip()
-            if not alias or not src or not tgt:
+
+            if not alias or not src_sheet or not src_cell or not tgt_sheet or not tgt_cell:
                 messagebox.showwarning("輸入不完整", "所有欄位不能為空")
                 return
-            new_map = {"source_alias": alias, "source_cell": src, "target_cell": tgt, "note": note}
+
+            src_full = f"{src_sheet}!{src_cell}"
+            tgt_full = f"{tgt_sheet}!{tgt_cell}"
+
+            new_map = {"source_alias": alias, "source_cell": src_full, "target_cell": tgt_full, "note": note}
             if edit_idx is not None:
                 self.config["data_mappings"][edit_idx] = new_map
             else:
                 self.config["data_mappings"].append(new_map)
             self.refresh_data_tree()
             popup.destroy()
+
         tb.Button(popup, text="確定", command=save, bootstyle="primary").grid(row=row, column=0, columnspan=2, pady=10)
 
     # ---------- 图片映射操作 ----------
@@ -431,32 +506,40 @@ class App:
         popup = tb.Toplevel(self.root)
         popup.title("編輯圖片對應" if edit_idx is not None else "新增圖片對應")
         row = 0
+
         tb.Label(popup, text="圖片編號:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         num_entry = tb.Entry(popup, width=30)
-        num_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        num_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="圖片資料夾:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         folder_var = tk.StringVar()
         folder_entry = tb.Entry(popup, textvariable=folder_var, width=30)
         folder_entry.grid(row=row, column=1, padx=5, pady=5)
-        tb.Button(popup, text="瀏覽", command=lambda: folder_var.set(filedialog.askdirectory()), bootstyle="secondary-outline").grid(row=row, column=2, padx=5); row+=1
+        tb.Button(popup, text="瀏覽", command=lambda: folder_var.set(filedialog.askdirectory()), bootstyle="secondary-outline").grid(row=row, column=2, padx=5); row += 1
+
+        tb.Label(popup, text="目標 Sheet:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+        tgt_sheet_var = tk.StringVar()
+        combo_tgt_sheet = tb.Combobox(popup, textvariable=tgt_sheet_var, width=28)
+        combo_tgt_sheet.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="目標儲存格:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        tgt_entry = tb.Entry(popup, width=30)
-        tgt_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
-        # 高度
+        tgt_cell_entry = tb.Entry(popup, width=30)
+        tgt_cell_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
+
         tb.Label(popup, text="高度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         h_entry = tb.Entry(popup, width=10)
-        h_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
-        # 宽度
+        h_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row += 1
+
         tb.Label(popup, text="寬度 (cm):").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         w_entry = tb.Entry(popup, width=10)
-        w_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row+=1
-        # 位置选择
+        w_entry.grid(row=row, column=1, sticky=tk.W, padx=5); row += 1
+
         tb.Label(popup, text="位置:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         pos_var = tk.StringVar(value="top-left")
         pos_frame = tb.Frame(popup)
         pos_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W)
         tb.Radiobutton(pos_frame, text="預設（左上角）", variable=pos_var, value="top-left").pack(side=tk.LEFT)
-        tb.Radiobutton(pos_frame, text="自訂偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10); row+=1
+        tb.Radiobutton(pos_frame, text="自訂偏移", variable=pos_var, value="custom").pack(side=tk.LEFT, padx=10); row += 1
         offset_frame = tb.Frame(popup)
         offset_frame.grid(row=row, column=1, columnspan=2, sticky=tk.W, pady=5)
         tb.Label(offset_frame, text="X偏移(cm):").pack(side=tk.LEFT)
@@ -478,15 +561,20 @@ class App:
                 y_entry.delete(0, tk.END); y_entry.insert(0, "0")
         pos_var.trace("w", toggle_offset)
 
-        # 备注
         tb.Label(popup, text="備註:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         note_entry = tb.Entry(popup, width=30)
-        note_entry.grid(row=row, column=1, padx=5, pady=5); row+=1
+        note_entry.grid(row=row, column=1, padx=5, pady=5); row += 1
 
         if item:
             num_entry.insert(0, item["image_number"])
             folder_var.set(item["image_folder"])
-            tgt_entry.insert(0, item["target_cell"])
+            tgt_full = item.get("target_cell", "")
+            if "!" in tgt_full:
+                tgt_sheet, tgt_cell = tgt_full.split("!", 1)
+            else:
+                tgt_sheet, tgt_cell = "", tgt_full
+            tgt_sheet_var.set(tgt_sheet)
+            tgt_cell_entry.insert(0, tgt_cell)
             h_entry.insert(0, str(item["height_cm"]))
             w_entry.insert(0, str(item["width_cm"]))
             pos_var.set(item.get("position", "top-left"))
@@ -498,10 +586,19 @@ class App:
             x_entry.insert(0, "0"); y_entry.insert(0, "0")
         toggle_offset()
 
+        def update_tgt_sheets():
+            tpl_path = self.tpl_path_var.get()
+            sheets = self._get_sheet_names(tpl_path) if tpl_path else []
+            combo_tgt_sheet['values'] = sheets
+            if sheets and not tgt_sheet_var.get():
+                tgt_sheet_var.set(sheets[0])
+        update_tgt_sheets()
+
         def save():
             num = num_entry.get().strip()
             folder = folder_var.get().strip()
-            tgt = tgt_entry.get().strip()
+            tgt_sheet = tgt_sheet_var.get()
+            tgt_cell = tgt_cell_entry.get().strip()
             try:
                 h = float(h_entry.get().strip())
                 w = float(w_entry.get().strip())
@@ -518,13 +615,14 @@ class App:
             else:
                 off_x = 0.0; off_y = 0.0
             note = note_entry.get().strip()
-            if not num or not folder or not tgt:
+            if not num or not folder or not tgt_sheet or not tgt_cell:
                 messagebox.showwarning("輸入不完整", "所有欄位必填")
                 return
+            tgt_full = f"{tgt_sheet}!{tgt_cell}"
             new_map = {
                 "image_number": num,
                 "image_folder": folder,
-                "target_cell": tgt,
+                "target_cell": tgt_full,
                 "width_cm": w,
                 "height_cm": h,
                 "position": pos_var.get(),
@@ -538,6 +636,7 @@ class App:
                 self.config["image_mappings"].append(new_map)
             self.refresh_image_tree()
             popup.destroy()
+
         tb.Button(popup, text="確定", command=save, bootstyle="primary").grid(row=row, column=0, columnspan=3, pady=10)
 
     def delete_selected(self, tree, map_type):
@@ -633,7 +732,6 @@ class App:
             messagebox.showerror("開啟範本失敗", str(e))
             return
 
-        # 数据写入
         for i, m in enumerate(cfg.get("data_mappings", [])):
             try:
                 alias = m.get("source_alias")
@@ -647,12 +745,12 @@ class App:
 
                 if isinstance(wb_src, xlrd.Book):
                     if src_sh not in wb_src.sheet_names():
-                        raise KeyError(f"資料來源[{alias}]中不存在工作表：'{src_sh}'\n可用工作表：{wb_src.sheet_names()}")
+                        raise KeyError(f"資料來源[{alias}]中不存在工作表：{repr(src_sh)}\n可用工作表：{wb_src.sheet_names()}")
                 else:
                     if src_sh not in wb_src.sheetnames:
-                        raise KeyError(f"資料來源[{alias}]中不存在工作表：'{src_sh}'\n可用工作表：{wb_src.sheetnames}")
+                        raise KeyError(f"資料來源[{alias}]中不存在工作表：{repr(src_sh)}\n可用工作表：{wb_src.sheetnames}")
                 if tgt_sh not in wb.sheetnames:
-                    raise KeyError(f"範本中不存在工作表：'{tgt_sh}'\n可用工作表：{wb.sheetnames}")
+                    raise KeyError(f"範本中不存在工作表：{repr(tgt_sh)}\n可用工作表：{wb.sheetnames}")
 
                 value = get_cell_value(wb_src, src_sh, src_cell)
                 ws_tgt = wb[tgt_sh]
@@ -665,7 +763,6 @@ class App:
                 messagebox.showerror("資料寫入錯誤", f"對應 {i+1}:\n來源 {m['source_cell']} → 目標 {m['target_cell']}\n錯誤：{e}")
                 return
 
-        # 图片插入
         inserted_count = 0
         skipped_details = []
         for i, m in enumerate(cfg.get("image_mappings", [])):
@@ -695,8 +792,9 @@ class App:
                     skipped_details.append(f"對應{i+1}: 目標儲存格格式錯誤")
                     continue
                 tgt_sh, tgt_cell = m["target_cell"].split("!", 1)
+
                 if tgt_sh not in wb.sheetnames:
-                    skipped_details.append(f"對應{i+1}: 範本中不存在工作表 '{tgt_sh}'")
+                    skipped_details.append(f"對應{i+1}: 範本中不存在工作表 {repr(tgt_sh)}")
                     continue
 
                 ws_tgt = wb[tgt_sh]
@@ -737,7 +835,6 @@ class App:
             if isinstance(w, xlrd.Book): pass
             else: w.close()
 
-        # 输出文件
         tpl_path = Path(cfg["template_path"])
         suffix = cfg.get("output_suffix", "_已更新")
         out_dir = cfg.get("output_dir", "")
@@ -764,15 +861,11 @@ class App:
 
 if __name__ == "__main__":
     root = tb.Window(themename="flatly")
-    
-    # 窗口尺寸：宽度35%，高度50%（比原来增加一成）
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    width = int(screen_width * 0.35)
-    height = int(screen_height * 0.5)  # 从0.4调整为0.5
-    root.geometry(f"{width}x{height}")
-    root.minsize(width, height)  # 禁止缩小到初始尺寸以下
-    root.resizable(True, True)
-    
     app = App(root)
+    root.update_idletasks()
+    req_width = root.winfo_reqwidth()
+    req_height = root.winfo_reqheight()
+    root.geometry(f"{req_width}x{req_height}")
+    root.minsize(req_width, req_height)
+    root.resizable(True, True)
     root.mainloop()
