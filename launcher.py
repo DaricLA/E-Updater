@@ -117,6 +117,9 @@ class Launcher:
         self.launch_records = {}
         self.desc_labels = []
 
+        # 序号字体缩小为5号
+        self.root.style.configure("TLabelframe.Label", font=("微软雅黑", 5), foreground="#B0B0B0")
+
         # 标题栏
         title_frame = tb.Frame(root, padding=(15, 15, 15, 5))
         title_frame.pack(fill=X)
@@ -126,17 +129,17 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，不包含滚动条）
+        # 外层容器（左右各40px空白，滚动条将基于此容器）
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="white")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条放在根窗口上，右对齐，宽度7px，覆盖在右侧空白上
-        self.scrollbar = tb.Scrollbar(root, orient=VERTICAL, command=self.canvas.yview, bootstyle="round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=7)  # 宽度缩小为7px
-        root.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
+        # 滚动条父级改为 outer_frame，高度跟随 outer_frame，宽度5px，浅蓝色
+        self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="info-round")
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5)
+        outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
 
         self.scrollable_frame = tb.Frame(self.canvas)
         self.scrollable_frame.bind(
@@ -173,27 +176,25 @@ class Launcher:
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _adjust_window_size(self):
-        """根据卡片实际渲染高度动态设置窗口高度，确保三行卡片完整显示"""
+        """根据卡片实际渲染高度动态设置窗口高度，额外增加20px"""
         self.scrollable_frame.update_idletasks()
         self.scrollable_frame.update()
         children = self.scrollable_frame.winfo_children()
         if not children:
             return
 
-        # 获取第一个卡片的实际高度
         card_height = children[0].winfo_height()
         if card_height <= 0:
             card_height = children[0].winfo_reqheight()
 
-        # 显示三行卡片的高度
         visible_height = card_height * 3 if card_height > 0 else 600
         title_height = 70
         progress_height = 25
         padding = 30
-        win_height = title_height + progress_height + visible_height + padding
+        win_height = title_height + progress_height + visible_height + padding + 20  # 额外加20px
 
         req_width = self.scrollable_frame.winfo_reqwidth()
-        win_width = req_width + 80  # 左右各40px空白
+        win_width = req_width + 80
 
         win_width = max(win_width, 800)
         win_height = max(win_height, 400)
