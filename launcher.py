@@ -116,6 +116,8 @@ class Launcher:
         self.processes = {}
         self.launch_records = {}
         self.desc_labels = []
+        self.scrollbar_visible = False
+        self.hide_scrollbar_id = None  # 用于延迟隐藏的 after ID
 
         # 序号字体缩小为5号
         self.root.style.configure("TLabelframe.Label", font=("微软雅黑", 5), foreground="#B0B0B0")
@@ -129,17 +131,21 @@ class Launcher:
         # 进度条
         self.progress = tb.Progressbar(root, mode='determinate', length=400, maximum=100, bootstyle="info")
 
-        # 外层容器（左右各40px空白，滚动条将基于此容器）
+        # 外层容器（左右各40px空白）
         outer_frame = tb.Frame(root)
         outer_frame.pack(fill=BOTH, expand=YES, padx=40, pady=(5, 10))
 
         self.canvas = tk.Canvas(outer_frame, borderwidth=0, highlightthickness=0, bg="white")
         self.canvas.pack(fill=BOTH, expand=YES)
 
-        # 滚动条父级改为 outer_frame，高度跟随 outer_frame，宽度5px，浅蓝色
-        self.scrollbar = tb.Scrollbar(outer_frame, orient=VERTICAL, command=self.canvas.yview, bootstyle="info-round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5)
-        outer_frame.bind('<Configure>', lambda e: self.scrollbar.place_configure(height=e.height))
+        # 滚动条父级为 root，贴右边缘，高度跟随 outer_frame
+        self.scrollbar = tb.Scrollbar(root, orient=VERTICAL, command=self.canvas.yview, bootstyle="info-round")
+        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5, x=0)
+        # 隐藏滚动条（初始状态）
+        self.scrollbar.place_forget()
+
+        # 绑定 outer_frame 大小变化，更新滚动条高度
+        outer_frame.bind('<Configure>', self._update_scrollbar_height)
 
         self.scrollable_frame = tb.Frame(self.canvas)
         self.scrollable_frame.bind(
@@ -151,9 +157,15 @@ class Launcher:
 
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
-        # 全局滚轮绑定
+        # 全局滚轮绑定（始终保持）
         self.root.bind("<MouseWheel>", self._on_root_mousewheel)
         self.canvas.bind("<MouseWheel>", self._on_root_mousewheel)
+
+        # 鼠标悬停显示/隐藏滚动条
+        self.canvas.bind("<Enter>", self._on_canvas_enter)
+        self.canvas.bind("<Leave>", self._on_canvas_leave)
+        outer_frame.bind("<Enter>", self._on_canvas_enter)
+        outer_frame.bind("<Leave>", self._on_canvas_leave)
 
         if self.tools:
             self.create_tool_grid()
@@ -162,6 +174,29 @@ class Launcher:
                      font=("微软雅黑", 12)).pack(pady=50)
 
         self.root.after(100, self._delayed_layout_update)
+
+    def _update_scrollbar_height(self, event):
+        """根据 outer_frame 的高度调整滚动条高度"""
+        self.scrollbar.place_configure(height=event.height)
+
+    def _on_canvas_enter(self, event):
+        """鼠标进入卡片区域，显示滚动条，取消任何隐藏定时器"""
+        if self.hide_scrollbar_id:
+            self.root.after_cancel(self.hide_scrollbar_id)
+            self.hide_scrollbar_id = None
+        if not self.scrollbar_visible:
+            self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5, x=0)
+            self.scrollbar_visible = True
+
+    def _on_canvas_leave(self, event):
+        """鼠标离开卡片区域，延迟隐藏滚动条"""
+        if self.scrollbar_visible:
+            self.hide_scrollbar_id = self.root.after(200, self._hide_scrollbar)
+
+    def _hide_scrollbar(self):
+        self.scrollbar.place_forget()
+        self.scrollbar_visible = False
+        self.hide_scrollbar_id = None
 
     def _on_canvas_configure(self, event):
         canvas_width = event.width
@@ -176,7 +211,7 @@ class Launcher:
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def _adjust_window_size(self):
-        """根据卡片实际渲染高度动态设置窗口高度，额外增加20px"""
+        """根据卡片实际渲染高度动态设置窗口高度，额外增加30px"""
         self.scrollable_frame.update_idletasks()
         self.scrollable_frame.update()
         children = self.scrollable_frame.winfo_children()
@@ -191,7 +226,7 @@ class Launcher:
         title_height = 70
         progress_height = 25
         padding = 30
-        win_height = title_height + progress_height + visible_height + padding + 20  # 额外加20px
+        win_height = title_height + progress_height + visible_height + padding + 30  # 额外加30px
 
         req_width = self.scrollable_frame.winfo_reqwidth()
         win_width = req_width + 80
