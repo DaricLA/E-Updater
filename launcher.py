@@ -117,7 +117,7 @@ class Launcher:
         self.launch_records = {}
         self.desc_labels = []
         self.scrollbar_visible = False
-        self.hide_scrollbar_id = None  # 用于延迟隐藏的 after ID
+        self.hide_scrollbar_id = None
 
         # 序号字体缩小为5号
         self.root.style.configure("TLabelframe.Label", font=("微软雅黑", 5), foreground="#B0B0B0")
@@ -140,11 +140,10 @@ class Launcher:
 
         # 滚动条父级为 root，贴右边缘，高度跟随 outer_frame
         self.scrollbar = tb.Scrollbar(root, orient=VERTICAL, command=self.canvas.yview, bootstyle="info-round")
-        self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5, x=0)
-        # 隐藏滚动条（初始状态）
+        # 直接隐藏，不预放置
         self.scrollbar.place_forget()
 
-        # 绑定 outer_frame 大小变化，更新滚动条高度
+        # 绑定 outer_frame 大小变化，仅当可见时更新高度
         outer_frame.bind('<Configure>', self._update_scrollbar_height)
 
         self.scrollable_frame = tb.Frame(self.canvas)
@@ -157,7 +156,7 @@ class Launcher:
 
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
-        # 全局滚轮绑定（始终保持）
+        # 全局滚轮绑定
         self.root.bind("<MouseWheel>", self._on_root_mousewheel)
         self.canvas.bind("<MouseWheel>", self._on_root_mousewheel)
 
@@ -176,16 +175,25 @@ class Launcher:
         self.root.after(100, self._delayed_layout_update)
 
     def _update_scrollbar_height(self, event):
-        """根据 outer_frame 的高度调整滚动条高度"""
-        self.scrollbar.place_configure(height=event.height)
+        """仅当滚动条可见时，更新其高度为 outer_frame 的高度"""
+        if self.scrollbar_visible:
+            self.scrollbar.place_configure(height=event.height)
 
     def _on_canvas_enter(self, event):
-        """鼠标进入卡片区域，显示滚动条，取消任何隐藏定时器"""
+        """鼠标进入卡片区域，显示滚动条并设置正确高度"""
         if self.hide_scrollbar_id:
             self.root.after_cancel(self.hide_scrollbar_id)
             self.hide_scrollbar_id = None
         if not self.scrollbar_visible:
-            self.scrollbar.place(relx=1.0, rely=0, anchor='ne', width=5, x=0)
+            # 获取当前 outer_frame 高度
+            outer_height = self.scrollbar.master.children[
+                '!frame'].winfo_height() if hasattr(self, 'canvas') else 300
+            # 显示时指定高度
+            self.scrollbar.place(
+                relx=1.0, rely=0, anchor='ne',
+                width=8,  # 稍微加宽，确保正常渲染
+                height=self.root.winfo_height()  # 初始使用窗口高度，稍后由 Configure 事件精确更新
+            )
             self.scrollbar_visible = True
 
     def _on_canvas_leave(self, event):
