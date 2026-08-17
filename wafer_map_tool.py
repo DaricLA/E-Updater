@@ -676,6 +676,14 @@ class WaferMapApp:
         self.status_label.config(text=f"共 {len(self.transformed_data)} 條記錄")
 
     # ==================== 复制功能 ====================
+    def copy_matrix_text(self):
+        if not self.matrix:
+            return
+        text = "\n".join("".join(row) for row in self.matrix)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        messagebox.showinfo("成功", "矩陣文字已複製到剪貼板。")
+
     def copy_tree_selection(self, event=None):
         selected = self.tree.selection()
         if not selected:
