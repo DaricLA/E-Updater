@@ -374,30 +374,23 @@ class WaferMapApp:
         return w, h
 
     def get_cell_label(self, bin_char, x, y):
-        """获取坐标对应的标签，优先特殊标记，其次第一类规则中第一个匹配的Label"""
-        # 特殊标记优先
         for marker in self.special_markers:
             if marker["x"] == x and marker["y"] == y:
                 return marker["label"]
-        # 否则从规则中找第一个匹配 Bin 的 Label
         for rule in self.color_rules:
             if rule["bin"] == bin_char:
                 return rule["label"]
         return ""
 
     def get_cell_color(self, bin_char, x, y):
-        """根据规则返回最终单元格颜色"""
-        # 特殊标记优先
         for marker in self.special_markers:
             if marker["x"] == x and marker["y"] == y:
                 return marker["color"]
-        # 从规则中查找匹配的 Bin+Label
         label = self.get_cell_label(bin_char, x, y)
         if label:
             for rule in self.color_rules:
                 if rule["bin"] == bin_char and rule["label"] == label:
                     return rule["color"]
-        # 否则使用默认颜色
         return self.bin_colors.get(bin_char, "#FFFFFF")
 
     def draw_matrix(self):
@@ -523,7 +516,6 @@ class WaferMapApp:
             if not label:
                 messagebox.showwarning("輸入不完整", "Label 不能為空")
                 return
-            # 检查重复
             for i, r in enumerate(self.color_rules):
                 if (edit_idx is None or i != edit_idx) and r["bin"] == bin_code and r["label"] == label:
                     messagebox.showerror("重複", "同一 Bin + Label 只能有一條規則")
@@ -637,12 +629,10 @@ class WaferMapApp:
             if not label:
                 messagebox.showwarning("輸入不完整", "Label 不能為空")
                 return
-            # 检查与第一类规则重复
             for rule in self.color_rules:
                 if rule["bin"] == bin_code and rule["label"] == label:
                     messagebox.showerror("重複", "與標籤顏色規則重複，無法保存")
                     return
-            # 检查标记重复
             for i, m in enumerate(self.special_markers):
                 if (edit_idx is None or i != edit_idx) and m["x"] == x and m["y"] == y:
                     messagebox.showerror("重複", "該坐標已存在標記")
