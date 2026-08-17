@@ -4,6 +4,7 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 import xml.etree.ElementTree as ET
 import os
+import sys
 import json
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment
@@ -21,11 +22,20 @@ FONT = ("微軟雅黑", 9)
 FONT_BOLD = ("微軟雅黑", 9, "bold")
 FONT_MATRIX = ("微軟雅黑", 8)
 
+RULES_FILE = "wafer_rules_config.json"
+
+def resource_path():
+    """获取 exe 同目录或开发目录"""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.getcwd()
+
 class WaferMapApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Wafer Map 轉換工具")
-        self.root.geometry("1200x800")
+        self.root.geometry("1200x900")
         self.root.resizable(True, True)
 
         self.xml_path = ""
@@ -36,12 +46,12 @@ class WaferMapApp:
         self.transformed_data = []
         self.bin_colors = {}
         self.unique_bins = []
-        self.color_rules = []       # 第一类规则：[{"bin":, "label":, "color":}]
-        self.special_markers = []   # 第二类标记：[{"x":, "y":, "bin":, "label":, "color":}]
+        self.color_rules = []
+        self.special_markers = []
 
         self.zoom_scale = 1.0
         self.min_zoom = 0.3
-        self.max_zoom = 2.0          # 缩放上限改为200%
+        self.max_zoom = 2.0
         self.zoom_step = 0.05
         self.base_cell_height = 12
         self.base_cell_width = int(12 * 1.1)
@@ -50,9 +60,36 @@ class WaferMapApp:
         self.page1 = tb.Frame(self.root)
         self.page2 = tb.Frame(self.root)
 
+        # 加载持久化规则
+        self.load_rules_from_file()
+
         self.build_page1()
         self.build_page2()
         self.page1.pack(fill=BOTH, expand=YES)
+
+    # ==================== 持久化规则 ====================
+    def load_rules_from_file(self):
+        path = os.path.join(resource_path(), RULES_FILE)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.color_rules = data.get("color_rules", [])
+                self.special_markers = data.get("special_markers", [])
+            except:
+                pass
+
+    def save_rules_to_file(self):
+        path = os.path.join(resource_path(), RULES_FILE)
+        data = {
+            "color_rules": self.color_rules,
+            "special_markers": self.special_markers
+        }
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except:
+            pass
 
     # ==================== 第一页构建 ====================
     def build_page1(self):
@@ -72,28 +109,13 @@ class WaferMapApp:
         left_frame = tb.Frame(main_pw, width=400)
         left_frame.pack_propagate(False)
 
-        # 表头信息
-        info_lf = tb.LabelFrame(left_frame, text="表頭完整信息", padding=5, bootstyle="info")
-        info_lf.pack(fill=BOTH, expand=YES, padx=2, pady=(0, 3))
-
-        self.info_text = tk.Text(info_lf, wrap="none", state="disabled",
-                                 font=FONT, relief=tk.FLAT)
-        v_scroll = tb.Scrollbar(info_lf, orient=VERTICAL, command=self.info_text.yview, bootstyle="round")
-        h_scroll = tb.Scrollbar(info_lf, orient=HORIZONTAL, command=self.info_text.xview, bootstyle="round")
-        self.info_text.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
-        self.info_text.grid(row=0, column=0, sticky=NSEW)
-        v_scroll.grid(row=0, column=1, sticky=NS)
-        h_scroll.grid(row=1, column=0, sticky=EW)
-        info_lf.grid_rowconfigure(0, weight=1)
-        info_lf.grid_columnconfigure(0, weight=1)
-
         # 标签颜色规则（第一类）
         rule_lf = tb.LabelFrame(left_frame, text="標籤顏色規則 (Bin+Label)", padding=5, bootstyle="info")
         rule_lf.pack(fill=BOTH, expand=YES, padx=2, pady=2)
 
         rule_container = tb.Frame(rule_lf)
         rule_container.pack(fill=BOTH, expand=YES)
-        self.rule_tree = tb.Treeview(rule_container, columns=("bin", "label", "color"), show="headings", height=5, bootstyle="primary")
+        self.rule_tree = tb.Treeview(rule_container, columns=("bin", "label", "color"), show="headings", height=6, bootstyle="primary")
         self.rule_tree.heading("bin", text="Bin")
         self.rule_tree.heading("label", text="Label")
         self.rule_tree.heading("color", text="顏色")
@@ -119,7 +141,7 @@ class WaferMapApp:
 
         marker_container = tb.Frame(marker_lf)
         marker_container.pack(fill=BOTH, expand=YES)
-        self.marker_tree = tb.Treeview(marker_container, columns=("x", "y", "bin", "label", "color"), show="headings", height=5, bootstyle="primary")
+        self.marker_tree = tb.Treeview(marker_container, columns=("x", "y", "bin", "label", "color"), show="headings", height=6, bootstyle="primary")
         self.marker_tree.heading("x", text="X")
         self.marker_tree.heading("y", text="Y")
         self.marker_tree.heading("bin", text="Bin")
@@ -142,6 +164,21 @@ class WaferMapApp:
         tb.Button(btn_marker, text="新增標記", command=self.add_special_marker, bootstyle="primary-outline").pack(side=LEFT, padx=2)
         tb.Button(btn_marker, text="編輯選中", command=self.edit_special_marker, bootstyle="secondary-outline").pack(side=LEFT, padx=2)
         tb.Button(btn_marker, text="刪除選中", command=self.delete_special_marker, bootstyle="danger-outline").pack(side=LEFT, padx=2)
+
+        # 表头完整信息（放最下方，自适应剩余空间）
+        info_lf = tb.LabelFrame(left_frame, text="表頭完整信息", padding=5, bootstyle="info")
+        info_lf.pack(fill=BOTH, expand=YES, padx=2, pady=(0, 3))
+
+        self.info_text = tk.Text(info_lf, wrap="none", state="disabled",
+                                 font=FONT, relief=tk.FLAT, height=8)
+        v_scroll = tb.Scrollbar(info_lf, orient=VERTICAL, command=self.info_text.yview, bootstyle="round")
+        h_scroll = tb.Scrollbar(info_lf, orient=HORIZONTAL, command=self.info_text.xview, bootstyle="round")
+        self.info_text.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        self.info_text.grid(row=0, column=0, sticky=NSEW)
+        v_scroll.grid(row=0, column=1, sticky=NS)
+        h_scroll.grid(row=1, column=0, sticky=EW)
+        info_lf.grid_rowconfigure(0, weight=1)
+        info_lf.grid_columnconfigure(0, weight=1)
 
         main_pw.add(left_frame, width=400)
 
@@ -178,7 +215,6 @@ class WaferMapApp:
 
         main_pw.add(right_frame)
 
-        # 底部转换按钮
         tb.Button(self.page1, text="轉換 → 生成坐標列表", command=self.go_to_page2,
                   bootstyle="primary", padding=(20, 10), width=25).pack(pady=10)
 
@@ -303,7 +339,22 @@ class WaferMapApp:
         self.zoom_scale_var.set(1.0)
         self.xml_path = path
         self.file_label.config(text=os.path.basename(path), foreground="black")
+
+        # 合并默认规则（确保每个 Bin 有默认规则条目）
+        self.merge_default_rules()
+
+        self.refresh_rule_tree()
+        self.refresh_marker_tree()
         self.draw_matrix()
+
+    def merge_default_rules(self):
+        """为每个 Bin 确保存在一条 Label 为空的默认规则"""
+        for bin_code in self.unique_bins:
+            default_color = self.bin_colors.get(bin_code, "#FFFFFF")
+            # 检查是否存在 Label 为空的规则
+            if not any(r["bin"] == bin_code and not r.get("label") for r in self.color_rules):
+                self.color_rules.append({"bin": bin_code, "label": "", "color": default_color})
+        self.save_rules_to_file()
 
     def build_header_text(self, root, device):
         lines = []
@@ -378,7 +429,7 @@ class WaferMapApp:
             if marker["x"] == x and marker["y"] == y:
                 return marker["label"]
         for rule in self.color_rules:
-            if rule["bin"] == bin_char:
+            if rule["bin"] == bin_char and rule.get("label"):
                 return rule["label"]
         return ""
 
@@ -391,6 +442,10 @@ class WaferMapApp:
             for rule in self.color_rules:
                 if rule["bin"] == bin_char and rule["label"] == label:
                     return rule["color"]
+        # 如果没有标签规则，找 bin 的默认规则（label为空）
+        for rule in self.color_rules:
+            if rule["bin"] == bin_char and not rule.get("label"):
+                return rule["color"]
         return self.bin_colors.get(bin_char, "#FFFFFF")
 
     def draw_matrix(self):
@@ -454,7 +509,7 @@ class WaferMapApp:
         for i in self.rule_tree.get_children():
             self.rule_tree.delete(i)
         for rule in self.color_rules:
-            self.rule_tree.insert("", "end", values=(rule["bin"], rule["label"], rule["color"]))
+            self.rule_tree.insert("", "end", values=(rule["bin"], rule.get("label", ""), rule["color"]))
 
     def refresh_marker_tree(self):
         for i in self.marker_tree.get_children():
@@ -486,38 +541,51 @@ class WaferMapApp:
     def _color_rule_dialog(self, edit_idx=None, rule=None):
         dialog = tb.Toplevel(self.root)
         dialog.title("編輯標籤顏色規則" if edit_idx is not None else "新增標籤顏色規則")
+        dialog.geometry("400x250")
+
         row = 0
         tb.Label(dialog, text="Bin:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         bin_var = tk.StringVar()
-        combo = tb.Combobox(dialog, textvariable=bin_var, values=self.unique_bins, state="readonly", width=10)
-        combo.grid(row=row, column=1, padx=5, pady=5)
+        combo = tb.Combobox(dialog, textvariable=bin_var, values=self.unique_bins, state="readonly", width=15)
+        combo.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
         if rule:
             bin_var.set(rule["bin"])
         elif self.unique_bins:
             combo.current(0)
         row += 1
+
+        # 判断是否为默认规则（Label 为空）
+        is_default_rule = rule is not None and not rule.get("label")
+
         tb.Label(dialog, text="Label:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         label_entry = tb.Entry(dialog, width=30)
-        label_entry.grid(row=row, column=1, padx=5, pady=5)
+        label_entry.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
         if rule:
             label_entry.insert(0, rule["label"])
+        if is_default_rule:
+            # 默认规则不可修改 Label
+            label_entry.config(state="disabled")
         row += 1
+
         tb.Label(dialog, text="顏色:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         color_var = tk.StringVar(value=rule["color"] if rule else "#FFFFFF")
-        color_preview = tb.Label(dialog, text="   ", background=color_var.get(), relief="ridge", width=5)
-        color_preview.grid(row=row, column=1, sticky=tk.W, padx=5)
-        tb.Button(dialog, text="選擇", command=lambda: self._pick_color_dialog(color_var, color_preview), bootstyle="secondary-outline").grid(row=row, column=2, padx=5)
+        color_canvas = tk.Canvas(dialog, width=24, height=24, highlightthickness=0, bg=dialog.cget("bg"))
+        color_canvas.grid(row=row, column=1, sticky=tk.W, padx=(0,5))
+        circle_id = color_canvas.create_oval(2, 2, 22, 22, fill=color_var.get(), outline="#D0D0D0")
+        tb.Button(dialog, text="選擇", command=lambda: self._pick_color_dialog(color_var, color_canvas, circle_id), bootstyle="secondary-outline").grid(row=row, column=1, sticky=tk.E, padx=5)
         row += 1
 
         def save_rule():
             bin_code = bin_var.get()
             label = label_entry.get().strip()
             color = color_var.get()
-            if not label:
-                messagebox.showwarning("輸入不完整", "Label 不能為空")
+            # 默认规则不允许非空 Label
+            if is_default_rule and label:
+                messagebox.showerror("錯誤", "預設規則不可修改 Label，只能變更顏色")
                 return
+            # 检查重复
             for i, r in enumerate(self.color_rules):
-                if (edit_idx is None or i != edit_idx) and r["bin"] == bin_code and r["label"] == label:
+                if (edit_idx is None or i != edit_idx) and r["bin"] == bin_code and r.get("label") == label:
                     messagebox.showerror("重複", "同一 Bin + Label 只能有一條規則")
                     return
             new_rule = {"bin": bin_code, "label": label, "color": color}
@@ -525,26 +593,33 @@ class WaferMapApp:
                 self.color_rules[edit_idx] = new_rule
             else:
                 self.color_rules.append(new_rule)
+            self.save_rules_to_file()
             self.refresh_rule_tree()
             self.draw_matrix()
             dialog.destroy()
 
-        tb.Button(dialog, text="確定", command=save_rule, bootstyle="primary").grid(row=row, column=0, columnspan=3, pady=10)
+        tb.Button(dialog, text="確定", command=save_rule, bootstyle="primary").grid(row=row, column=0, columnspan=2, pady=10)
         dialog.grab_set()
         dialog.focus_force()
 
-    def _pick_color_dialog(self, color_var, preview_label):
+    def _pick_color_dialog(self, color_var, canvas, circle_id):
         color = colorchooser.askcolor(initialcolor=color_var.get(), title="選擇顏色")
         if color and color[1]:
             color_var.set(color[1])
-            preview_label.config(background=color[1])
+            canvas.itemconfig(circle_id, fill=color[1])
 
     def delete_color_rule(self):
         selected = self.rule_tree.selection()
         if not selected:
             return
         idx = self.rule_tree.index(selected[0])
+        rule = self.color_rules[idx]
+        # 禁止删除默认规则
+        if not rule.get("label"):
+            messagebox.showwarning("警告", "默認規則不可刪除，只能編輯顏色")
+            return
         del self.color_rules[idx]
+        self.save_rules_to_file()
         self.refresh_rule_tree()
         self.draw_matrix()
 
@@ -564,53 +639,42 @@ class WaferMapApp:
     def _special_marker_dialog(self, edit_idx=None, marker=None):
         dialog = tb.Toplevel(self.root)
         dialog.title("編輯特殊座標標記" if edit_idx is not None else "新增特殊座標標記")
+        dialog.geometry("420x280")
+
         row = 0
         tb.Label(dialog, text="X:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         x_entry = tb.Entry(dialog, width=8)
-        x_entry.grid(row=row, column=1, padx=5, pady=5)
+        x_entry.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
+        tb.Label(dialog, text="Y:").grid(row=row, column=2, padx=5, pady=5, sticky=tk.W)
+        y_entry = tb.Entry(dialog, width=8)
+        y_entry.grid(row=row, column=3, padx=5, pady=5, sticky=tk.W)
         if marker:
             x_entry.insert(0, str(marker["x"]))
-        row += 1
-        tb.Label(dialog, text="Y:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-        y_entry = tb.Entry(dialog, width=8)
-        y_entry.grid(row=row, column=1, padx=5, pady=5)
-        if marker:
             y_entry.insert(0, str(marker["y"]))
         row += 1
+
         tb.Label(dialog, text="Bin:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         bin_var = tk.StringVar()
         bin_combo = tb.Combobox(dialog, textvariable=bin_var, values=self.unique_bins, state="readonly", width=10)
-        bin_combo.grid(row=row, column=1, padx=5, pady=5)
+        bin_combo.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
+        tb.Button(dialog, text="自動帶出", command=lambda: self._auto_fill_bin(x_entry, y_entry, bin_var), bootstyle="secondary-outline").grid(row=row, column=2, padx=5, pady=5, sticky=tk.W)
         if marker:
             bin_var.set(marker["bin"])
         row += 1
 
-        def auto_bin():
-            try:
-                x = int(x_entry.get().strip())
-                y = int(y_entry.get().strip())
-            except ValueError:
-                messagebox.showwarning("輸入錯誤", "X 和 Y 必須為整數")
-                return
-            if 1 <= x <= self.cols and 1 <= y <= self.rows:
-                bin_code = self.matrix[y-1][x-1]
-                bin_var.set(bin_code)
-            else:
-                messagebox.showwarning("範圍錯誤", "X 或 Y 超出矩陣範圍")
-
-        tb.Button(dialog, text="自動帶出", command=auto_bin, bootstyle="secondary-outline").grid(row=row, column=2, padx=5)
-        row += 1
         tb.Label(dialog, text="Label:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         label_entry = tb.Entry(dialog, width=30)
-        label_entry.grid(row=row, column=1, padx=5, pady=5)
+        label_entry.grid(row=row, column=1, padx=5, pady=5, sticky=tk.W)
         if marker:
             label_entry.insert(0, marker["label"])
         row += 1
+
         tb.Label(dialog, text="顏色:").grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
         color_var = tk.StringVar(value=marker["color"] if marker else "#FFFFFF")
-        color_preview = tb.Label(dialog, text="   ", background=color_var.get(), relief="ridge", width=5)
-        color_preview.grid(row=row, column=1, sticky=tk.W, padx=5)
-        tb.Button(dialog, text="選擇", command=lambda: self._pick_color_dialog(color_var, color_preview), bootstyle="secondary-outline").grid(row=row, column=2, padx=5)
+        color_canvas = tk.Canvas(dialog, width=24, height=24, highlightthickness=0, bg=dialog.cget("bg"))
+        color_canvas.grid(row=row, column=1, sticky=tk.W, padx=(0,5))
+        circle_id = color_canvas.create_oval(2, 2, 22, 22, fill=color_var.get(), outline="#D0D0D0")
+        tb.Button(dialog, text="選擇", command=lambda: self._pick_color_dialog(color_var, color_canvas, circle_id), bootstyle="secondary-outline").grid(row=row, column=2, padx=5)
         row += 1
 
         def save_marker():
@@ -630,7 +694,7 @@ class WaferMapApp:
                 messagebox.showwarning("輸入不完整", "Label 不能為空")
                 return
             for rule in self.color_rules:
-                if rule["bin"] == bin_code and rule["label"] == label:
+                if rule["bin"] == bin_code and rule.get("label") == label:
                     messagebox.showerror("重複", "與標籤顏色規則重複，無法保存")
                     return
             for i, m in enumerate(self.special_markers):
@@ -642,13 +706,27 @@ class WaferMapApp:
                 self.special_markers[edit_idx] = new_marker
             else:
                 self.special_markers.append(new_marker)
+            self.save_rules_to_file()
             self.refresh_marker_tree()
             self.draw_matrix()
             dialog.destroy()
 
-        tb.Button(dialog, text="確定", command=save_marker, bootstyle="primary").grid(row=row, column=0, columnspan=3, pady=10)
+        tb.Button(dialog, text="確定", command=save_marker, bootstyle="primary").grid(row=row, column=0, columnspan=4, pady=10)
         dialog.grab_set()
         dialog.focus_force()
+
+    def _auto_fill_bin(self, x_entry, y_entry, bin_var):
+        try:
+            x = int(x_entry.get().strip())
+            y = int(y_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning("輸入錯誤", "X 和 Y 必須為整數")
+            return
+        if 1 <= x <= self.cols and 1 <= y <= self.rows:
+            bin_code = self.matrix[y-1][x-1]
+            bin_var.set(bin_code)
+        else:
+            messagebox.showwarning("範圍錯誤", "X 或 Y 超出矩陣範圍")
 
     def delete_special_marker(self):
         selected = self.marker_tree.selection()
@@ -656,6 +734,7 @@ class WaferMapApp:
             return
         idx = self.marker_tree.index(selected[0])
         del self.special_markers[idx]
+        self.save_rules_to_file()
         self.refresh_marker_tree()
         self.draw_matrix()
 
