@@ -331,26 +331,17 @@ class WaferMapApp:
             all_chars.update(row)
         self.unique_bins = sorted(list(all_chars))
 
-        self.auto_color_map(device, data)
+        self.auto_color_map(device, data)  # 保留自动颜色作为后备（可选）
         self.update_header_display()
         self.zoom_scale = 1.0
         self.zoom_scale_var.set(1.0)
         self.xml_path = path
         self.file_label.config(text=os.path.basename(path), foreground="black")
 
-        self.merge_default_rules()
-
+        # 不再自动添加默认规则
         self.refresh_rule_tree()
         self.refresh_marker_tree()
         self.draw_matrix()
-
-    def merge_default_rules(self):
-        """加载 XML 后，为每个 Bin 生成默认规则（Label 为空），但允许用户后续编辑/删除"""
-        for bin_code in self.unique_bins:
-            default_color = self.bin_colors.get(bin_code, "#FFFFFF")
-            if not any(r["bin"] == bin_code and r.get("label") == "" for r in self.color_rules):
-                self.color_rules.append({"bin": bin_code, "label": "", "color": default_color})
-        self.save_rules_to_file()
 
     def build_header_text(self, root, device):
         lines = []
@@ -430,19 +421,17 @@ class WaferMapApp:
         return ""
 
     def get_cell_color(self, bin_char, x, y):
+        # 优先特殊标记
         for marker in self.special_markers:
             if marker["x"] == x and marker["y"] == y:
                 return marker["color"]
+        # 其次标签规则
         label = self.get_cell_label(bin_char, x, y)
         if label:
             for rule in self.color_rules:
                 if rule["bin"] == bin_char and rule["label"] == label:
                     return rule["color"]
-        # 如果没有标签规则，找 bin 的默认规则（label为空）
-        for rule in self.color_rules:
-            if rule["bin"] == bin_char and not rule.get("label"):
-                return rule["color"]
-        # 缺省为白色
+        # 无规则时返回白色
         return "#FFFFFF"
 
     def draw_matrix(self):
